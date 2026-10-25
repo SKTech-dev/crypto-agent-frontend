@@ -790,9 +790,11 @@ function DecisionDetail({ id, close }: { id: string; close: () => void }) {
 export function SettingsPage() {
   const { data: s, error } = useData<Settings>("settings"),
     client = useQueryClient();
-  const [model, setModel] = useState(""),
-    [inputPrice, setInputPrice] = useState("2"),
-    [outputPrice, setOutputPrice] = useState("8");
+  const [model, setModel] = useState("");
+  const selectedModel = model || s?.model || "";
+  const selectedPrice = s?.available_models?.find(
+    (item) => item.model === selectedModel,
+  );
   const mutation = useMutation({
     mutationFn: (command: string) => api(`/bot/${command}`, { method: "POST" }),
     onSuccess: () => client.invalidateQueries(),
@@ -802,9 +804,7 @@ export function SettingsPage() {
       api("/settings/model", {
         method: "PUT",
         body: JSON.stringify({
-          model,
-          input_per_million: inputPrice,
-          output_per_million: outputPrice,
+          model: selectedModel,
         }),
       }),
     onSuccess: () => client.invalidateQueries(),
@@ -930,46 +930,113 @@ export function SettingsPage() {
               modelMutation.mutate();
             }}
           >
-            <label htmlFor="model">Model name</label>
-            <input
+            <label htmlFor="model">AI model</label>
+            <select
               id="model"
-              value={model}
-              placeholder={s.model}
-              onChange={(e) => setModel(e.target.value)}
+              value={selectedModel}
+              onChange={(e) => {
+                setModel(e.target.value);
+                modelMutation.reset();
+              }}
+              disabled={modelMutation.isPending || !s.available_models?.length}
               required
-            />
+            >
+              {!s.available_models?.some(
+                (item) => item.model === selectedModel,
+              ) && (
+                <option value={selectedModel}>
+                  {selectedModel} · pricing unavailable
+                </option>
+              )}
+              {s.available_models?.map((item) => (
+                <option key={item.model} value={item.model}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+            {s.bot?.status === "RUNNING" && (
+              <div className="notice">
+                You can select a model and compare prices while the bot runs.
+                Pause before saving the change.
+                <button
+                  type="button"
+                  disabled={mutation.isPending}
+                  onClick={() => mutation.mutate("pause")}
+                >
+                  Pause bot to enable saving
+                </button>
+              </div>
+            )}
+            {selectedModel !== s.model && (
+              <p className="pricing-source" role="status">
+                Selected: {selectedModel}. Active: {s.model}. Save to apply your
+                selection.
+              </p>
+            )}
             <label htmlFor="input-price">
               Estimated input USD / million tokens
             </label>
             <input
               id="input-price"
-              type="number"
-              min="0.001"
-              step="0.001"
-              value={inputPrice}
-              onChange={(e) => setInputPrice(e.target.value)}
+              value={selectedPrice?.input_per_million || "Unavailable"}
+              readOnly
             />
             <label htmlFor="output-price">
               Estimated output USD / million tokens
             </label>
             <input
               id="output-price"
-              type="number"
-              min="0.001"
-              step="0.001"
-              value={outputPrice}
-              onChange={(e) => setOutputPrice(e.target.value)}
+              value={selectedPrice?.output_per_million || "Unavailable"}
+              readOnly
             />
+            {selectedPrice ? (
+              <p className="pricing-source">
+                Standard text rates · USD per million tokens. Verified{" "}
+                {selectedPrice.verified_at}.{" "}
+                <a
+                  href={selectedPrice.source_url}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Official OpenAI pricing ↗
+                </a>
+                {selectedPrice.lifecycle === "deprecated" && (
+                  <span>
+                    {" "}
+                    This model is marked deprecated; availability depends on
+                    your account.
+                  </span>
+                )}
+              </p>
+            ) : (
+              <p role="alert" className="negative">
+                Verified pricing is unavailable. Restart the updated backend or
+                select a supported model.
+              </p>
+            )}
             <button
-              disabled={s.bot?.status === "RUNNING" || modelMutation.isPending}
+              disabled={
+                !selectedPrice ||
+                s.bot?.status === "RUNNING" ||
+                mutation.isPending ||
+                modelMutation.isPending
+              }
             >
-              Save model & estimates
+              Save model
             </button>
           </form>
           {modelMutation.error && <Failure error={modelMutation.error} />}
+          {modelMutation.isSuccess && (
+            <p className="panel-note positive" role="status">
+              Model and automatic token prices saved.
+            </p>
+          )}
           <p className="panel-note">
-            Pause before changing models. Verify current token prices. Failed
-            calls retain conservative reservations when billing is uncertain.
+            Select a model at any time; pause to save, then resume trading.
+            Prices load automatically from the reviewed pricing catalog; future
+            price changes require a catalog update. Actual cost depends on token
+            usage, and estimates exclude cached-input discounts. Failed calls
+            retain conservative reservations when billing is uncertain.
           </p>
         </Panel>
       </div>

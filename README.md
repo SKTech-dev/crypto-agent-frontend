@@ -15,7 +15,7 @@ Start the backend API and independent PostgreSQL trading worker as described in 
 
 The dashboard distinguishes fee-inclusive virtual trading P&L from estimated actual AI expenses, displays incomplete current UTC periods, and labels all capital as virtual. Decision detail shows original agent reasoning, contradictions, model/tokens/costs, market evidence, deterministic risk results and any fill. Positions link to both their original entry and exit decisions. Confidence is subjective and uncalibrated. A losing trade's explanation is always the original recorded explanation.
 
-Risk parameters are backend configuration. Model changes require pausing and entering current estimated token prices. START requires `AUTO_TRADING_ENABLED=true` on both services. PAUSE/STOP preserve monitoring and protective full exits. The backend authenticates every private endpoint; CORS alone never authorizes a control.
+Risk parameters are backend configuration. Model changes require pausing. Selecting a model automatically displays its standard text input/output prices, official source and verification date. Save sends only the model ID; the backend resolves and stores the reviewed prices. No manual price entry is required. The dated catalog is not a live billing feed; API availability depends on the account. START requires `AUTO_TRADING_ENABLED=true` on both services. PAUSE/STOP preserve monitoring and protective full exits. The backend authenticates every private endpoint; CORS alone never authorizes a control.
 
 ## Checks
 

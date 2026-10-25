@@ -21,7 +21,8 @@ body {
   margin: 0;
 }
 button,
-input {
+input,
+select {
   font: inherit;
 }
 button,
@@ -62,7 +63,8 @@ input {
   padding: 12px;
   color: #f1f4f9;
 }
-input:focus {
+input:focus,
+select:focus {
   outline: 2px solid #91c86d;
   outline-offset: 2px;
 }
@@ -644,6 +646,17 @@ td {
 }
 .model-form input {
   font-size: 12px;
+}
+.model-form select {
+  font-size: 12px;
+}
+.pricing-source {
+  font-size: 10px;
+  line-height: 1.7;
+}
+.pricing-source a {
+  color: #b0ef7b;
+  text-decoration: underline;
 }
 .pagination {
   display: flex;

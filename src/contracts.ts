@@ -184,12 +184,25 @@ export interface Detail {
   } | null;
   fill: Fill | null;
 }
+export interface ModelPrice {
+  model: string;
+  label: string;
+  input_per_million: string;
+  output_per_million: string;
+  currency: string;
+  tier: string;
+  verified_at: string;
+  pricing_version: string;
+  source_url: string;
+  lifecycle: string;
+}
 export interface Settings {
   bot: Bot;
   mode: string;
   automation_enabled: boolean;
   initial_capital: string;
   model: string;
+  available_models?: ModelPrice[];
   daily_ai_budget: string;
   daily_ai_spent_or_reserved: string;
   risk: Record<string, string>;

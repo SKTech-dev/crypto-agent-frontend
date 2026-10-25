@@ -57,6 +57,32 @@ const settings = {
   automation_enabled: true,
   initial_capital: "100",
   model: "gpt-4.1",
+  available_models: [
+    {
+      model: "gpt-4.1",
+      label: "GPT-4.1",
+      input_per_million: "2.00",
+      output_per_million: "8.00",
+      currency: "USD",
+      tier: "standard",
+      verified_at: "2026-10-25",
+      pricing_version: "test",
+      source_url: "https://developers.openai.com/api/docs/models/gpt-4.1",
+      lifecycle: "deprecated",
+    },
+    {
+      model: "gpt-4.1-mini",
+      label: "GPT-4.1 mini",
+      input_per_million: "0.40",
+      output_per_million: "1.60",
+      currency: "USD",
+      tier: "standard",
+      verified_at: "2026-10-25",
+      pricing_version: "test",
+      source_url: "https://developers.openai.com/api/docs/models/gpt-4.1-mini",
+      lifecycle: "deprecated",
+    },
+  ],
   daily_ai_budget: "1",
   daily_ai_spent_or_reserved: "0",
   risk: { stop_loss: "0.02" },
@@ -76,6 +102,81 @@ beforeEach(() => {
   vi.restoreAllMocks();
 });
 describe("private dashboard", () => {
+  it("allows model selection while running and explains how to apply it", async () => {
+    const fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ ...settings, bot: { ...bot, status: "RUNNING" } }),
+    }));
+    vi.stubGlobal("fetch", fetch);
+    mount(<SettingsPage />);
+    const selector = await screen.findByRole("combobox", { name: "AI model" });
+    expect(selector).toBeEnabled();
+    fireEvent.change(selector, { target: { value: "gpt-4.1-mini" } });
+    expect(selector).toHaveValue("gpt-4.1-mini");
+    expect(
+      screen.getByLabelText("Estimated input USD / million tokens"),
+    ).toHaveValue("0.40");
+    expect(screen.getByRole("button", { name: "Save model" })).toBeDisabled();
+    expect(screen.getByRole("status")).toHaveTextContent("Active: gpt-4.1");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Pause bot to enable saving" }),
+    );
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/bot/pause"),
+        expect.objectContaining({ method: "POST" }),
+      ),
+    );
+    expect(fetch).not.toHaveBeenCalledWith(
+      expect.stringContaining("/api/settings/model"),
+      expect.anything(),
+    );
+  });
+  it("automatically displays the selected model price and saves only the model", async () => {
+    const fetch = vi.fn(async () => ({ ok: true, json: async () => settings }));
+    vi.stubGlobal("fetch", fetch);
+    mount(<SettingsPage />);
+    const model = await screen.findByRole("combobox", { name: "AI model" });
+    expect(
+      screen.getByLabelText("Estimated input USD / million tokens"),
+    ).toHaveValue("2.00");
+    fireEvent.change(model, { target: { value: "gpt-4.1-mini" } });
+    expect(
+      screen.getByLabelText("Estimated input USD / million tokens"),
+    ).toHaveValue("0.40");
+    expect(
+      screen.getByLabelText("Estimated output USD / million tokens"),
+    ).toHaveValue("1.60");
+    expect(
+      screen.getByLabelText("Estimated input USD / million tokens"),
+    ).toHaveAttribute("readonly");
+    fireEvent.click(screen.getByRole("button", { name: "Save model" }));
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/settings/model"),
+        expect.objectContaining({
+          method: "PUT",
+          body: JSON.stringify({ model: "gpt-4.1-mini" }),
+        }),
+      ),
+    );
+  });
+  it("blocks saving a model when verified pricing is unavailable", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ ...settings, available_models: [] }),
+      })),
+    );
+    mount(<SettingsPage />);
+    expect(
+      await screen.findByRole("button", { name: "Save model" }),
+    ).toBeDisabled();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Verified pricing is unavailable",
+    );
+  });
   it("requires an operator token before showing private data", () => {
     mount(<App />);
     expect(screen.getByLabelText("Operator access token")).toHaveAttribute(
