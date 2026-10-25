@@ -107,6 +107,16 @@ strong {
 .muted {
   color: #748198;
 }
+.decision-time {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.decision-time > small {
+  font-size: 10px;
+}
 .positive {
   color: #b0ef7b;
 }

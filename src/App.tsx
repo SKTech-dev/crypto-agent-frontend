@@ -30,6 +30,7 @@ import { CandleChart, EquityChart, PeriodChart } from "./charts";
 import {
   ActionBadge,
   Badge,
+  DecisionTime,
   Failure,
   Loading,
   Metric,
@@ -335,7 +336,7 @@ export function Dashboard() {
             <div className="decision-preview">
               <div>
                 <ActionBadge action={o.recent_decision.action} />
-                <small>{stamp(o.recent_decision.timestamp)}</small>
+                <DecisionTime timestamp={o.recent_decision.timestamp} />
               </div>
               <h3>{o.recent_decision.status.replaceAll("_", " ")}</h3>
               <p>{o.recent_decision.reason}</p>
@@ -536,7 +537,7 @@ export function History() {
           <table>
             <thead>
               <tr>
-                <th>Timestamp (UTC)</th>
+                <th>Timestamp (Sri Lanka / UTC)</th>
                 <th>Action</th>
                 <th>Outcome</th>
                 <th>Original reasoning</th>
@@ -546,7 +547,9 @@ export function History() {
             <tbody>
               {decisions?.map((d) => (
                 <tr key={d.id}>
-                  <td>{stamp(d.timestamp)}</td>
+                  <td>
+                    <DecisionTime timestamp={d.timestamp} />
+                  </td>
                   <td>
                     <ActionBadge action={d.action} />
                   </td>
@@ -689,7 +692,7 @@ function DecisionDetail({ id, close }: { id: string; close: () => void }) {
             <div className="detail-top">
               <ActionBadge action={d.decision.action} />
               <Badge>{d.decision.status}</Badge>
-              <small>{stamp(d.decision.timestamp)}</small>
+              <DecisionTime timestamp={d.decision.timestamp} />
             </div>
             <h3>Recorded explanation</h3>
             <p>{d.decision.reason}</p>

@@ -10,6 +10,34 @@ export const stamp = (v: number | null | undefined) =>
   v
     ? `${new Date(v).toISOString().replace("T", " ").slice(0, 19)} UTC`
     : "Not yet recorded";
+const sriLankaFormatter = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Asia/Colombo",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hourCycle: "h23",
+});
+
+export function DecisionTime({ timestamp }: { timestamp: number }) {
+  const parts = Object.fromEntries(
+    sriLankaFormatter
+      .formatToParts(timestamp)
+      .map((part) => [part.type, part.value]),
+  );
+  const local = `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second}`;
+  const iso = new Date(timestamp).toISOString();
+  return (
+    <span className="decision-time">
+      <time dateTime={iso}>{local} Sri Lanka (UTC+05:30)</time>
+      <small>
+        <time dateTime={iso}>{stamp(timestamp)}</time>
+      </small>
+    </span>
+  );
+}
 export function Badge({
   children,
   tone = "neutral",
