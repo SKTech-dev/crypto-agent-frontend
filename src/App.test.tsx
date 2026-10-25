@@ -102,6 +102,60 @@ beforeEach(() => {
   vi.restoreAllMocks();
 });
 describe("private dashboard", () => {
+  it("keeps unresolved protection visible independently of analysis health", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => ({
+        ok: true,
+        json: async () =>
+          url.endsWith("/overview")
+            ? {
+                ...overview,
+                bot: {
+                  ...bot,
+                  protection: {
+                    status: "BLOCKED",
+                    timestamp: Date.now(),
+                    risk: {
+                      reasons: [
+                        "Order exceeds 10% of observed top-level liquidity",
+                      ],
+                    },
+                  },
+                },
+              }
+            : { snapshots: [], daily: [], monthly: [] },
+      })),
+    );
+    mount(<Dashboard />);
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("BLOCKED");
+    expect(alert).toHaveTextContent("liquidity");
+    expect(alert).toHaveTextContent("position remains exposed");
+  });
+  it("shows protective quote unavailability in settings", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          ...settings,
+          bot: {
+            ...bot,
+            protection: {
+              status: "UNAVAILABLE",
+              timestamp: Date.now(),
+              error: "MONITOR_QUOTE:TimeoutError",
+            },
+          },
+        }),
+      })),
+    );
+    mount(<SettingsPage />);
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "MONITOR_QUOTE:TimeoutError",
+    );
+  });
   it("shows completed deterministic HOLD with non-applicable execution risk", async () => {
     const decision = {
       id: "hold-1",

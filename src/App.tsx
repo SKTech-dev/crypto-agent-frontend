@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { api, setToken } from "./api";
 import type {
+  Bot,
   Decision,
   Detail,
   Market,
@@ -45,6 +46,25 @@ export function useData<T>(key: string) {
     queryFn: () => api<T>(`/${key}`),
     refetchInterval: 15_000,
   });
+}
+
+function ProtectionNotice({ bot }: { bot: Bot | null }) {
+  const protection = bot?.protection;
+  if (
+    !protection ||
+    !["PENDING", "BLOCKED", "UNAVAILABLE"].includes(protection.status)
+  )
+    return null;
+  return (
+    <div className="notice error" role="alert">
+      Protective monitoring: {protection.status}.{" "}
+      {protection.error ||
+        protection.risk?.reasons.join("; ") ||
+        "Exit awaiting execution."}{" "}
+      The position remains exposed until a valid paper exit succeeds. Retries
+      use fresh market data. Updated {stamp(protection.timestamp)}.
+    </div>
+  );
 }
 
 export function App() {
@@ -216,6 +236,7 @@ export function Dashboard() {
           {o.bot.error ? `Worker reported ${o.bot.error}.` : ""}
         </div>
       )}
+      <ProtectionNotice bot={o.bot} />
       <div className="hero-grid">
         <section className="equity-card">
           <span className="eyebrow">
@@ -668,6 +689,11 @@ function DecisionDetail({ id, close }: { id: string; close: () => void }) {
   const { data: d, error } = useQuery({
     queryKey: ["detail", id],
     queryFn: () => api<Detail>(`/decisions/${id}`),
+    refetchInterval: (query) =>
+      query.state.data?.decision.proposal.protection_position_id &&
+      query.state.data.decision.status === "PENDING"
+        ? 15_000
+        : false,
   });
   return (
     <div className="modal-backdrop" onClick={close}>
@@ -757,6 +783,23 @@ function DecisionDetail({ id, close }: { id: string; close: () => void }) {
                 ) : null}
               </div>
             ))}
+            {!!d.protection_events?.length && (
+              <>
+                <h3>Protective exit attempts</h3>
+                <p>
+                  Latest 50 events. Blocked attempts remain pending and never
+                  bypass risk limits.
+                </p>
+                {d.protection_events.map((event) => (
+                  <details key={event.id}>
+                    <summary>
+                      {stamp(event.timestamp)} · {event.status}
+                    </summary>
+                    <pre>{JSON.stringify(event.evidence, null, 2)}</pre>
+                  </details>
+                ))}
+              </>
+            )}
             <h3>Deterministic risk evaluation</h3>
             {d.risk ? (
               <>
@@ -884,6 +927,20 @@ export function SettingsPage() {
           ))}
         </div>
         {mutation.error && <Failure error={mutation.error} />}
+        <ProtectionNotice bot={s.bot} />
+        {!!s.protection_events?.length && (
+          <details>
+            <summary>Recent protective monitoring events (latest 20)</summary>
+            {s.protection_events.map((event) => (
+              <details key={event.id}>
+                <summary>
+                  {stamp(event.timestamp)} · {event.status}
+                </summary>
+                <pre>{JSON.stringify(event.evidence, null, 2)}</pre>
+              </details>
+            ))}
+          </details>
+        )}
         <p className="panel-note">{s.protective_policy}</p>
         {!s.automation_enabled && (
           <div className="notice">

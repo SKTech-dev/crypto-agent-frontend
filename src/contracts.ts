@@ -5,6 +5,12 @@ export interface Bot {
   error: string | null;
   risk_halt: boolean;
   settings: Record<string, string>;
+  protection?: {
+    status: string;
+    timestamp: number;
+    error?: string;
+    risk?: { reasons: string[] };
+  };
 }
 export interface Portfolio {
   initial: string;
@@ -28,6 +34,7 @@ export interface Decision {
   strategy: string;
   prompt_version: string;
   proposal: {
+    protection_position_id?: string;
     supporting_agents?: string[];
     opposing_agents?: string[];
     risk_notes?: string[];
@@ -174,7 +181,14 @@ export interface AgentRun {
     risks?: string[];
   };
 }
+export interface ProtectionEvent {
+  id: string;
+  timestamp: number;
+  status: string;
+  evidence: Record<string, unknown>;
+}
 export interface Detail {
+  protection_events?: ProtectionEvent[];
   decision: Decision;
   market: { timestamp: number; evidence: Market } | null;
   agents: AgentRun[];
@@ -205,6 +219,7 @@ export interface ModelPrice {
   lifecycle: string;
 }
 export interface Settings {
+  protection_events?: ProtectionEvent[];
   bot: Bot;
   mode: string;
   automation_enabled: boolean;
