@@ -19,6 +19,8 @@ Risk parameters are backend configuration. Model changes require pausing. Select
 
 ## Checks
 
+GitHub Actions runs the `Frontend checks / test` job for pull requests targeting `development`, updates to those PRs, and pushes/merges to `development`; manual runs are available too. It installs locked dependencies, runs ESLint, TypeScript and component tests, then builds the production frontend. The `frontend-dist` artifact is retained for seven days. No deployment secrets are needed. Commit and push the workflow to enable it, and make this check required in the `development` branch rules if failed checks should block merging. Netlify publishing is configured separately from PR validation.
+
 ```powershell
 npm.cmd run lint
 npm.cmd run typecheck
