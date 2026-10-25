@@ -32,6 +32,13 @@ export interface Decision {
     opposing_agents?: string[];
     risk_notes?: string[];
     model_confidence?: number;
+    analysis?: {
+      mode: "DETERMINISTIC" | "MULTI_AGENT";
+      policy_version: string;
+      paid_roles_invoked: string[];
+      paid_roles_not_invoked: string[];
+      eligibility: { failed_rules: string[] };
+    } | null;
   };
 }
 export interface Fill {
@@ -172,6 +179,7 @@ export interface Detail {
   market: { timestamp: number; evidence: Market } | null;
   agents: AgentRun[];
   risk: {
+    recorded_result?: Record<string, unknown>;
     result: {
       outcome: string;
       quantity: string;

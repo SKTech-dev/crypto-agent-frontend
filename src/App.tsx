@@ -696,6 +696,17 @@ function DecisionDetail({ id, close }: { id: string; close: () => void }) {
             </div>
             <h3>Recorded explanation</h3>
             <p>{d.decision.reason}</p>
+            {d.decision.proposal.analysis && (
+              <p className="panel-note">
+                Analysis:{" "}
+                {d.decision.proposal.analysis.mode === "DETERMINISTIC"
+                  ? "Deterministic strategy checks; no paid AI agents invoked."
+                  : "Multi-agent analysis."}
+                {d.decision.proposal.analysis.eligibility.failed_rules.length >
+                  0 &&
+                  ` Unmet strategy rules: ${d.decision.proposal.analysis.eligibility.failed_rules.join(", ")}.`}
+              </p>
+            )}
             <div className="detail-meta">
               <span>Strategy: {d.decision.strategy}</span>
               <span>Prompt: {d.decision.prompt_version}</span>
@@ -750,7 +761,13 @@ function DecisionDetail({ id, close }: { id: string; close: () => void }) {
             {d.risk ? (
               <>
                 <Badge
-                  tone={d.risk.result.outcome === "APPROVED" ? "green" : "red"}
+                  tone={
+                    d.risk.result.outcome === "APPROVED"
+                      ? "green"
+                      : d.risk.result.outcome === "REJECTED"
+                        ? "red"
+                        : "neutral"
+                  }
                 >
                   {d.risk.result.outcome}
                 </Badge>
@@ -758,12 +775,26 @@ function DecisionDetail({ id, close }: { id: string; close: () => void }) {
                   {d.risk.result.reasons.join("; ") ||
                     d.risk.result.rules.join(" · ")}
                 </p>
-                <p>
-                  Approved quantity {d.risk.result.quantity} BTC · estimated fee{" "}
-                  {d.risk.result.estimated_fee} USDT
-                </p>
+                {d.risk.result.outcome !== "NOT_APPLICABLE" && (
+                  <p>
+                    Approved quantity {d.risk.result.quantity} BTC · estimated
+                    fee {d.risk.result.estimated_fee} USDT
+                  </p>
+                )}
+                {d.risk.recorded_result && (
+                  <details>
+                    <summary>
+                      Original legacy risk evaluation (audit record)
+                    </summary>
+                    <pre>{JSON.stringify(d.risk.recorded_result, null, 2)}</pre>
+                  </details>
+                )}
                 <details>
-                  <summary>Portfolio used for validation</summary>
+                  <summary>
+                    {d.risk.result.outcome === "NOT_APPLICABLE"
+                      ? "Recorded portfolio state"
+                      : "Portfolio used for validation"}
+                  </summary>
                   <pre>{JSON.stringify(d.risk.result.portfolio, null, 2)}</pre>
                 </details>
               </>

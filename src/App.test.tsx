@@ -102,6 +102,73 @@ beforeEach(() => {
   vi.restoreAllMocks();
 });
 describe("private dashboard", () => {
+  it("shows completed deterministic HOLD with non-applicable execution risk", async () => {
+    const decision = {
+      id: "hold-1",
+      timestamp: Date.parse("2026-10-25T17:15:07Z"),
+      action: "HOLD",
+      status: "COMPLETED",
+      reason: "ENTRY_MOMENTUM: momentum must be positive; observed 0",
+      strategy: "btc_multi_agent_v1",
+      prompt_version: "agents_v1",
+      proposal: {
+        analysis: {
+          mode: "DETERMINISTIC",
+          policy_version: "selective_agents_v1",
+          paid_roles_invoked: [],
+          paid_roles_not_invoked: [
+            "market",
+            "technical",
+            "strategy",
+            "risk",
+            "coordinator",
+          ],
+          eligibility: { failed_rules: ["ENTRY_MOMENTUM"] },
+        },
+      },
+    };
+    const detail = {
+      decision,
+      market: null,
+      agents: [],
+      fill: null,
+      risk: {
+        result: {
+          outcome: "NOT_APPLICABLE",
+          quantity: "0",
+          rules: ["NO_EXECUTABLE_PROPOSAL"],
+          reasons: [
+            "HOLD is a completed analysis result; no order was proposed.",
+          ],
+          estimated_fee: "0",
+          estimated_slippage: "0",
+          portfolio: {},
+        },
+      },
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => ({
+        ok: true,
+        json: async () =>
+          url.endsWith("/positions")
+            ? []
+            : url.endsWith("/hold-1")
+              ? detail
+              : [decision],
+      })),
+    );
+    mount(<History />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Inspect decision hold-1" }),
+    );
+    expect(await screen.findByText("NOT_APPLICABLE")).toHaveClass("neutral");
+    expect(screen.queryByText(/Approved quantity/)).not.toBeInTheDocument();
+    expect(screen.getByText(/no paid AI agents invoked/)).toBeInTheDocument();
+    expect(
+      screen.getByText(decision.reason, { selector: ".modal p" }),
+    ).toBeInTheDocument();
+  });
   it("allows model selection while running and explains how to apply it", async () => {
     const fetch = vi.fn(async () => ({
       ok: true,
