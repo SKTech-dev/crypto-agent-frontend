@@ -29,6 +29,12 @@ import type {
 } from "./contracts";
 import { CandleChart, EquityChart, PeriodChart } from "./charts";
 import {
+  FuturesDashboard,
+  FuturesHistory,
+  FuturesMarketPage,
+  FuturesSettingsPage,
+} from "./futures";
+import {
   ActionBadge,
   Badge,
   DecisionTime,
@@ -68,6 +74,7 @@ function ProtectionNotice({ bot }: { bot: Bot | null }) {
 }
 
 export function App() {
+  const [futures, setFutures] = useState(true);
   const [authenticated, setAuthenticated] = useState(false),
     [token, updateToken] = useState(""),
     [error, setError] = useState("");
@@ -76,7 +83,8 @@ export function App() {
     e.preventDefault();
     setToken(token);
     try {
-      await api("/settings");
+      const settings = await api<{ research_mode?: string }>("/settings");
+      setFutures(settings.research_mode === "futures");
       setAuthenticated(true);
       updateToken("");
       setError("");
@@ -135,7 +143,11 @@ export function App() {
         <nav>
           {[
             ["/", "Overview", LayoutDashboard],
-            ["/market", "BTC market", ChartCandlestick],
+            [
+              "/market",
+              futures ? "BTC futures" : "BTC market",
+              ChartCandlestick,
+            ],
             ["/decisions", "Decisions & trades", Workflow],
             ["/settings", "Bot settings", Settings2],
           ].map(([path, label, Icon]) => {
@@ -177,7 +189,7 @@ export function App() {
         <header className="topbar">
           <span>
             <span className="muted">Workspace</span> <ChevronRight size={13} />{" "}
-            Bitcoin research
+            {futures ? "Bitcoin perpetual Futures" : "Bitcoin Spot history"}
           </span>
           <Badge tone="green">
             <i /> PAPER MODE
@@ -185,10 +197,22 @@ export function App() {
         </header>
         <div className="page">
           <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/market" element={<MarketPage />} />
-            <Route path="/decisions" element={<History />} />
-            <Route path="/settings" element={<SettingsPage />} />
+            <Route
+              path="/"
+              element={futures ? <FuturesDashboard /> : <Dashboard />}
+            />
+            <Route
+              path="/market"
+              element={futures ? <FuturesMarketPage /> : <MarketPage />}
+            />
+            <Route
+              path="/decisions"
+              element={futures ? <FuturesHistory /> : <History />}
+            />
+            <Route
+              path="/settings"
+              element={futures ? <FuturesSettingsPage /> : <SettingsPage />}
+            />
           </Routes>
         </div>
         <footer>

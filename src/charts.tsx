@@ -23,7 +23,15 @@ const base = {
   handleScroll: false,
   handleScale: false,
 };
-export function EquityChart({ rows }: { rows: Snapshot[] }) {
+export function EquityChart({
+  rows,
+  futures = false,
+}: {
+  rows: (Pick<Snapshot, "timestamp" | "equity" | "benchmark_signal"> & {
+    benchmark_hold?: string;
+  })[];
+  futures?: boolean;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!ref.current || !rows.length) return;
@@ -48,14 +56,16 @@ export function EquityChart({ rows }: { rows: Snapshot[] }) {
           value: Number(r.equity),
         })),
       );
-    chart
-      .addSeries(LineSeries, { color: "#7e8ffa", lineWidth: 1, lineStyle: 2 })
-      .setData(
-        distinct.map((r) => ({
-          time: Math.floor(r.timestamp / 1000) as Time,
-          value: Number(r.benchmark_hold),
-        })),
-      );
+    if (!futures) {
+      chart
+        .addSeries(LineSeries, { color: "#7e8ffa", lineWidth: 1, lineStyle: 2 })
+        .setData(
+          distinct.map((r) => ({
+            time: Math.floor(r.timestamp / 1000) as Time,
+            value: Number(r.benchmark_hold),
+          })),
+        );
+    }
     chart
       .addSeries(LineSeries, { color: "#e6ac68", lineWidth: 1, lineStyle: 2 })
       .setData(
@@ -66,7 +76,7 @@ export function EquityChart({ rows }: { rows: Snapshot[] }) {
       );
     chart.timeScale().fitContent();
     return () => chart.remove();
-  }, [rows]);
+  }, [rows, futures]);
   return (
     <div ref={ref} className="chart">
       {!rows.length && (

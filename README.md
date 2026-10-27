@@ -1,5 +1,9 @@
 # Bitwise research dashboard
 
+The default view is now BTCUSDT USD-M perpetual **FUTURES PAPER** research (`btc_perpetual_v1`). Dashboard, Market, History and Settings show LONG/SHORT/FLAT positions, wallet/free collateral/isolated margin, mark equity, funding, approximate liquidation, unresolved protective exits and the deterministic Futures comparator. Separate market timestamps expose stale executable quotes even when mark monitoring remains available. History can select either research portfolio and inspect original prompts, cached tokens, risk constraints, fills and funding transfers. The prior Spot components remain available for archive compatibility and tests; Spot balances are never Futures collateral.
+
+The backend starts a new run STOPPED. A verified, dated maintenance-tier book is required for entries. At the default 100-USDT capital, the risk and exposure limits can make BTCUSDT minimum quantity/notional unexecutable. The UI reports this constraint; it does not increase leverage or relax limits. Review the backend migration report and README before selecting a development database or enabling automation.
+
 React 19 + TypeScript + Vite + Tailwind CSS, TanStack Query, React Router and Lightweight Charts. Four responsive dark-mode pages: portfolio overview, BTC market, decision/position audit history and bot settings. All numbers come from the sibling FastAPI backend; no demonstration trades or synthetic market prices are presented as real data.
 
 ## Run locally
@@ -34,4 +38,4 @@ Vitest uses mocked API responses to verify portfolio rendering, separate cost re
 
 Use the included `netlify.toml`: `npm run build`, publish `dist`. Set `VITE_API_BASE_URL` to the Railway API HTTPS origin and configure that frontend origin in backend CORS. SPA redirects and security headers are supplied. The content-security policy permits HTTPS API requests; localhost is allowed for local development only. Never configure OpenAI, Binance, PostgreSQL or operator credentials as frontend build variables. No deployment or publishing is performed automatically.
 
-Source paths: `src/contracts.ts` mirrors the FastAPI JSON contract, `api.ts` owns private API requests, `App.tsx` contains the four pages, `ui.tsx` contains consistent small components, and `charts.tsx` owns financial chart lifecycle/cleanup. Chart floats are for display only; all backend financial math uses Decimal. Backend OpenAPI is available at `/openapi.json`.
+Source paths: `src/futures-contracts.ts` and `src/futures.tsx` contain the Futures contract and pages. `src/contracts.ts` preserves the Spot contract. `api.ts` owns private API requests, `App.tsx` selects the research view, `ui.tsx` contains shared components, and `charts.tsx` owns chart lifecycle/cleanup. Chart floats are for display only; all backend financial math uses Decimal. Backend OpenAPI is available at `/openapi.json`.

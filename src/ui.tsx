@@ -106,7 +106,13 @@ export function Failure({ error }: { error: Error }) {
 export function ActionBadge({ action }: { action: string }) {
   return (
     <Badge
-      tone={action === "BUY" ? "green" : action === "SELL" ? "red" : "neutral"}
+      tone={
+        action === "BUY" || action === "OPEN_LONG"
+          ? "green"
+          : action === "SELL" || action === "OPEN_SHORT"
+            ? "red"
+            : "neutral"
+      }
     >
       {action}
     </Badge>
