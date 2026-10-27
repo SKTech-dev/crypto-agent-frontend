@@ -3,6 +3,8 @@ import { NavLink } from "react-router-dom";
 import { Activity, ArrowUpRight, Bitcoin } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./api";
+import { Pagination, usePagination } from "./pagination";
+import type { ProtectionEvent } from "./contracts";
 import { CandleChart, EquityChart, PeriodChart } from "./charts";
 import {
   ActionBadge,
@@ -674,17 +676,22 @@ function FuturesDecisionDetail({
 
 export function FuturesHistory() {
   const [kind, setKind] = useState("AI"),
-    [offset, setOffset] = useState(0),
     [selected, select] = useState<string | null>(null);
-  const { data: decisions, error } = useFutures<FuturesDecision[]>(
-    `decisions?kind=${kind}&offset=${offset}`,
+  const decisionPage = usePagination();
+  const positionPage = usePagination();
+  const fundingPage = usePagination();
+  const decisionQuery = useFutures<FuturesDecision[]>(
+    `decisions?kind=${kind}&offset=${decisionPage.offset}&limit=${decisionPage.pageSize + 1}`,
   );
-  const { data: positions, error: positionError } = useFutures<
-    FuturesPosition[]
-  >(`positions?kind=${kind}&offset=${offset}`);
-  const { data: funding, error: fundingError } = useFutures<FuturesFunding[]>(
-    `funding?kind=${kind}&offset=${offset}`,
+  const positionQuery = useFutures<FuturesPosition[]>(
+    `positions?kind=${kind}&offset=${positionPage.offset}&limit=${positionPage.pageSize + 1}`,
   );
+  const fundingQuery = useFutures<FuturesFunding[]>(
+    `funding?kind=${kind}&offset=${fundingPage.offset}&limit=${fundingPage.pageSize + 1}`,
+  );
+  const decisions = decisionQuery.data?.slice(0, decisionPage.pageSize);
+  const positions = positionQuery.data?.slice(0, positionPage.pageSize);
+  const funding = fundingQuery.data?.slice(0, fundingPage.pageSize);
   return (
     <>
       <div className="page-title">
@@ -696,7 +703,10 @@ export function FuturesHistory() {
               value={kind}
               onChange={(e) => {
                 setKind(e.target.value);
-                setOffset(0);
+                decisionPage.reset();
+                positionPage.reset();
+                fundingPage.reset();
+                select(null);
               }}
             >
               <option value="AI">AI-controlled</option>
@@ -706,8 +716,9 @@ export function FuturesHistory() {
         </div>
         <p>Spot records are preserved separately and excluded from this run.</p>
       </div>
-      {error && <Failure error={error} />}
+      {decisionQuery.error && <Failure error={decisionQuery.error} />}
       <Panel title="Decision journal">
+        {decisionQuery.isPending && <Loading />}
         <div className="table-scroll">
           <table>
             <thead>
@@ -742,16 +753,30 @@ export function FuturesHistory() {
         </div>
         {decisions && !decisions.length && (
           <div className="empty">
-            No decisions recorded for this portfolio yet.
+            {decisionPage.page === 0
+              ? "No decisions recorded for this portfolio yet."
+              : "No decisions on this page. Use Previous to return to newer records."}
           </div>
         )}
+        <Pagination
+          label="Decision journal"
+          {...decisionPage}
+          count={decisions?.length ?? 0}
+          hasNext={(decisionQuery.data?.length ?? 0) > decisionPage.pageSize}
+          loading={decisionQuery.isFetching}
+          error={!!decisionQuery.error}
+          onPageChange={decisionPage.setPage}
+          onPageSizeChange={decisionPage.setPageSize}
+        />
       </Panel>
-      {positionError && <Failure error={positionError} />}
+      {positionQuery.error && <Failure error={positionQuery.error} />}
       <Panel title="Isolated positions">
+        {positionQuery.isPending && <Loading />}
         {positions && !positions.length && (
           <div className="empty">
-            No Futures positions yet. Open and closed positions will appear
-            here.
+            {positionPage.page === 0
+              ? "No Futures positions yet. Open and closed positions will appear here."
+              : "No positions on this page. Use Previous to return to newer records."}
           </div>
         )}
         {positions?.map((p) => (
@@ -786,9 +811,20 @@ export function FuturesHistory() {
             )}
           </article>
         ))}
+        <Pagination
+          label="Isolated positions"
+          {...positionPage}
+          count={positions?.length ?? 0}
+          hasNext={(positionQuery.data?.length ?? 0) > positionPage.pageSize}
+          loading={positionQuery.isFetching}
+          error={!!positionQuery.error}
+          onPageChange={positionPage.setPage}
+          onPageSizeChange={positionPage.setPageSize}
+        />
       </Panel>
-      {fundingError && <Failure error={fundingError} />}
+      {fundingQuery.error && <Failure error={fundingQuery.error} />}
       <Panel title="Funding transfers">
+        {fundingQuery.isPending && <Loading />}
         <div className="table-scroll">
           <table>
             <thead>
@@ -820,31 +856,22 @@ export function FuturesHistory() {
         </div>
         {funding && !funding.length && (
           <div className="empty">
-            No funding transfers recorded for this portfolio.
+            {fundingPage.page === 0
+              ? "No funding transfers recorded for this portfolio."
+              : "No funding transfers on this page. Use Previous to return to newer records."}
           </div>
         )}
+        <Pagination
+          label="Funding transfers"
+          {...fundingPage}
+          count={funding?.length ?? 0}
+          hasNext={(fundingQuery.data?.length ?? 0) > fundingPage.pageSize}
+          loading={fundingQuery.isFetching}
+          error={!!fundingQuery.error}
+          onPageChange={fundingPage.setPage}
+          onPageSizeChange={fundingPage.setPageSize}
+        />
       </Panel>
-      <div className="pagination">
-        <button
-          disabled={!offset}
-          onClick={() => setOffset(Math.max(0, offset - 50))}
-        >
-          Previous
-        </button>
-        <span>Page {offset / 50 + 1} · each journal is paginated</span>
-        <button
-          disabled={
-            Math.max(
-              decisions?.length || 0,
-              positions?.length || 0,
-              funding?.length || 0,
-            ) < 50
-          }
-          onClick={() => setOffset(offset + 50)}
-        >
-          Next
-        </button>
-      </div>
       {selected && (
         <FuturesDecisionDetail id={selected} close={() => select(null)} />
       )}
@@ -857,6 +884,11 @@ export function FuturesSettingsPage() {
     client = useQueryClient();
   const [model, setModel] = useState(""),
     [leverage, setLeverage] = useState(0);
+  const historyPage = usePagination();
+  const historyQuery = useFutures<ProtectionEvent[]>(
+    `protection-events?offset=${historyPage.offset}&limit=${historyPage.pageSize + 1}`,
+  );
+  const history = historyQuery.data?.slice(0, historyPage.pageSize);
   const refresh = () => client.invalidateQueries({ queryKey: ["futures"] });
   const controls = useMutation({
     mutationFn: (command: string) =>
@@ -1105,13 +1137,17 @@ export function FuturesSettingsPage() {
         </div>
       </Panel>
       <Panel title="Protective monitoring history">
-        {s.protection_events.length === 0 ? (
+        {historyQuery.error && <Failure error={historyQuery.error} />}
+        {historyQuery.isPending && <Loading />}
+        {history?.length === 0 ? (
           <div className="empty">
-            No protective monitoring incidents recorded.
+            {historyPage.page === 0
+              ? "No protective monitoring incidents recorded."
+              : "No incidents on this page. Use Previous to return to newer records."}
           </div>
         ) : (
           <div className="panel-body protection-history">
-            {s.protection_events.map((e) => (
+            {history?.map((e) => (
               <details key={e.id}>
                 <summary>
                   {stamp(e.timestamp)} · {e.status}
@@ -1121,6 +1157,16 @@ export function FuturesSettingsPage() {
             ))}
           </div>
         )}
+        <Pagination
+          label="Protective monitoring history"
+          {...historyPage}
+          count={history?.length ?? 0}
+          hasNext={(historyQuery.data?.length ?? 0) > historyPage.pageSize}
+          loading={historyQuery.isFetching}
+          error={!!historyQuery.error}
+          onPageChange={historyPage.setPage}
+          onPageSizeChange={historyPage.setPageSize}
+        />
       </Panel>
     </>
   );

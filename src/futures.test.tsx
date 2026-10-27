@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, expect, it, vi } from "vitest";
@@ -105,13 +111,170 @@ function fetchData(values: Record<string, unknown>) {
     const path = url.split("/api/")[1];
     return {
       ok: true,
-      json: async () => values[path] ?? values[path.split("?")[0]],
+      json: async () =>
+        values[path] ??
+        values[path.split("?")[0]] ??
+        (path.startsWith("protection-events") ? [] : undefined),
     };
   });
   vi.stubGlobal("fetch", fetch);
   return fetch;
 }
 beforeEach(() => vi.restoreAllMocks());
+
+function pagedHistory(count = 20, failSecondPage = false) {
+  const rows = Array.from({ length: count }, (_, i) => ({
+    id: `record-${i}`,
+    timestamp: Date.now() - i,
+    action: "HOLD",
+    status: "COMPLETED",
+    reason: `Recorded decision ${i}`,
+    strategy: "btc_perpetual_v1",
+    evidence: {},
+    proposal: {},
+    risk: {},
+    side: "LONG",
+    leverage: 2,
+    quantity: ".001",
+    notional: "80",
+    initial_margin: "40",
+    entry_fee: "0",
+    exit_fee: "0",
+    entry_decision_id: `record-${i}`,
+    position_id: `position-${i}`,
+    settlement_time: Date.now() - i,
+    rate: ".0001",
+    amount: "0",
+    shortfall: "0",
+    late_reconciliation: false,
+  }));
+  const fetch = vi.fn(async (url: string) => {
+    const path = new URL(url).pathname.split("/").pop();
+    if (path === "settings") return { ok: true, json: async () => settings };
+    const params = new URL(url).searchParams;
+    const offset = Number(params.get("offset") || 0);
+    if (failSecondPage && path === "decisions" && offset > 0) {
+      return {
+        ok: false,
+        json: async () => ({ detail: "Journal temporarily unavailable" }),
+      };
+    }
+    const data = params.get("kind") === "DETERMINISTIC" ? [] : rows;
+    return {
+      ok: true,
+      json: async () =>
+        data.slice(offset, offset + Number(params.get("limit") || 50)),
+    };
+  });
+  vi.stubGlobal("fetch", fetch);
+  return fetch;
+}
+
+it("pages each Futures journal independently and resets all pages on portfolio change", async () => {
+  const fetch = pagedHistory();
+  mount(<FuturesHistory />);
+  const decisions = within(
+    screen.getByRole("navigation", { name: "Decision journal pagination" }),
+  );
+  const positions = within(
+    screen.getByRole("navigation", { name: "Isolated positions pagination" }),
+  );
+  const funding = within(
+    screen.getByRole("navigation", { name: "Funding transfers pagination" }),
+  );
+  await waitFor(() =>
+    expect(decisions.getByRole("button", { name: "Next" })).toBeEnabled(),
+  );
+  expect(screen.queryByText("Recorded decision 10")).not.toBeInTheDocument();
+  fireEvent.click(decisions.getByRole("button", { name: "Next" }));
+  await screen.findByText("Recorded decision 10");
+  expect(decisions.getByRole("status")).toHaveTextContent("Page 2");
+  expect(positions.getByRole("status")).toHaveTextContent("Page 1");
+  expect(funding.getByRole("status")).toHaveTextContent("Page 1");
+  fireEvent.click(positions.getByRole("button", { name: "Next" }));
+  await waitFor(() =>
+    expect(positions.getByRole("button", { name: "Previous" })).toBeEnabled(),
+  );
+  fireEvent.click(funding.getByRole("button", { name: "Next" }));
+  await waitFor(() =>
+    expect(funding.getByRole("button", { name: "Previous" })).toBeEnabled(),
+  );
+  fireEvent.change(screen.getByLabelText("Research portfolio"), {
+    target: { value: "DETERMINISTIC" },
+  });
+  await screen.findByText("No decisions recorded for this portfolio yet.");
+  for (const pager of [decisions, positions, funding])
+    expect(pager.getByRole("status")).toHaveTextContent("Page 1");
+  expect(
+    fetch.mock.calls.some(([url]) =>
+      url.includes("positions?kind=AI&offset=10&limit=11"),
+    ),
+  ).toBe(true);
+  expect(
+    fetch.mock.calls.some(([url]) =>
+      url.includes("funding?kind=AI&offset=10&limit=11"),
+    ),
+  ).toBe(true);
+});
+
+it("disables Next on an exactly full final page and resets after changing page size", async () => {
+  pagedHistory();
+  mount(<FuturesHistory />);
+  const pager = within(
+    screen.getByRole("navigation", { name: "Decision journal pagination" }),
+  );
+  await waitFor(() =>
+    expect(pager.getByRole("button", { name: "Next" })).toBeEnabled(),
+  );
+  fireEvent.click(pager.getByRole("button", { name: "Next" }));
+  await screen.findByText("Recorded decision 19");
+  expect(pager.getByRole("button", { name: "Next" })).toBeDisabled();
+  fireEvent.change(pager.getByLabelText("Decision journal rows per page"), {
+    target: { value: "25" },
+  });
+  await screen.findByText("Recorded decision 0");
+  expect(pager.getByRole("status")).toHaveTextContent("Page 1 · Records 1–20");
+  expect(pager.getByRole("button", { name: "First" })).toBeDisabled();
+  expect(pager.getByRole("button", { name: "Next" })).toBeDisabled();
+});
+
+it("allows returning from a failed page without moving the other journals", async () => {
+  pagedHistory(20, true);
+  mount(<FuturesHistory />);
+  const pager = within(
+    screen.getByRole("navigation", { name: "Decision journal pagination" }),
+  );
+  await waitFor(() =>
+    expect(pager.getByRole("button", { name: "Next" })).toBeEnabled(),
+  );
+  fireEvent.click(pager.getByRole("button", { name: "Next" }));
+  await screen.findByText("Journal temporarily unavailable");
+  expect(pager.getByRole("button", { name: "Next" })).toBeDisabled();
+  fireEvent.click(pager.getByRole("button", { name: "Previous" }));
+  await screen.findByText("Recorded decision 0");
+});
+
+it("requests older protection incidents beyond the settings preview", async () => {
+  const fetch = pagedHistory(31);
+  mount(<FuturesSettingsPage />);
+  const pager = within(
+    await screen.findByRole("navigation", {
+      name: "Protective monitoring history pagination",
+    }),
+  );
+  await waitFor(() =>
+    expect(pager.getByRole("button", { name: "Next" })).toBeEnabled(),
+  );
+  fireEvent.click(pager.getByRole("button", { name: "Next" }));
+  await waitFor(() =>
+    expect(pager.getByRole("status")).toHaveTextContent("Records 11–20"),
+  );
+  expect(
+    fetch.mock.calls.some(([url]) =>
+      url.includes("protection-events?offset=10&limit=11"),
+    ),
+  ).toBe(true);
+});
 
 it("uses futures routes after operator login", async () => {
   fetchData({
@@ -383,6 +546,8 @@ it("runs start, pause, resume and stop through the API and refreshes control sta
       status = transitions[path.split("/")[1]];
       return { ok: true, json: async () => ({ ...bot, status }) };
     }
+    if (path.startsWith("protection-events"))
+      return { ok: true, json: async () => [] };
     return {
       ok: true,
       json: async () => ({ ...settings, bot: { ...bot, status } }),
@@ -413,7 +578,11 @@ it("shows rejected commands and releases pending controls", async () => {
           ok: false,
           json: async () => ({ detail: "Invalid state transition" }),
         }
-      : { ok: true, json: async () => settings },
+      : {
+          ok: true,
+          json: async () =>
+            url.includes("/protection-events") ? [] : settings,
+        },
   );
   vi.stubGlobal("fetch", fetch);
   mount(<FuturesSettingsPage />);

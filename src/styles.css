@@ -670,6 +670,7 @@ td {
 }
 .pagination {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
   gap: 15px;
@@ -681,6 +682,23 @@ td {
 .pagination button {
   font-size: 10px;
   padding: 7px 12px;
+}
+.pagination-size,
+.pagination-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pagination-size {
+  margin-right: auto;
+}
+.pagination-size select {
+  width: auto;
+  padding: 7px 10px;
+  font-size: 12px;
+}
+.pagination-summary {
+  font-variant-numeric: tabular-nums;
 }
 .position {
   padding: 23px;
