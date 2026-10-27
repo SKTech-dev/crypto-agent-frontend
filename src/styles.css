@@ -1289,3 +1289,57 @@ footer > span {
     width: 100%;
   }
 }
+
+/* Paper bot actions: state and interaction remain clear without relying on color. */
+.bot-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.bot-control {
+  min-width: 100px;
+  font-weight: 700;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    transform 0.15s;
+}
+.bot-control-start,
+.bot-control-resume {
+  background: #a3e66d;
+  border-color: #a3e66d;
+  color: #15210d;
+}
+.bot-control-pause {
+  background: #efc264;
+  border-color: #efc264;
+  color: #2b200b;
+}
+.bot-control-stop {
+  background: #d94c60;
+  border-color: #ed7183;
+  color: #fff;
+}
+.bot-control-start:hover:not(:disabled),
+.bot-control-resume:hover:not(:disabled) {
+  background: #c0f597;
+}
+.bot-control-pause:hover:not(:disabled) {
+  background: #ffda8e;
+}
+.bot-control-stop:hover:not(:disabled) {
+  background: #bd3348;
+}
+.bot-control:active:not(:disabled) {
+  transform: translateY(1px);
+}
+.bot-control:disabled {
+  background: #18212c;
+  border-color: #354052;
+  color: #8995a6;
+  opacity: 1;
+}
+.bot-control-help {
+  display: grid;
+  gap: 12px;
+}

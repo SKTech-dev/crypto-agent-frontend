@@ -277,3 +277,149 @@ it("keeps unresolved protective intents visible", async () => {
     "Full exit blocked by liquidity",
   );
 });
+
+it.each([false, true])(
+  "explains skipped evidence without fabricated sizing (gate recorded: %s)",
+  async (recorded) => {
+    const decision = {
+      id: "skipped-1",
+      timestamp: Date.now(),
+      ready_at: null,
+      action: "NO_DECISION",
+      status: "SKIPPED",
+      reason: "Analysis skipped",
+      strategy: "btc_perpetual_v1",
+      prompt_version: "futures_agents_v1",
+      evidence: {
+        eligibility: {
+          action: "HOLD",
+          combination: "ALL",
+          checks: [],
+          directions: {
+            LONG: [
+              {
+                rule: "EMA_1H",
+                passed: false,
+                condition: "Directional 1h EMA12/26",
+                observed: { ema12: "80012", ema26: "80023" },
+              },
+            ],
+          },
+        },
+        ...(recorded
+          ? {
+              operational_gate: {
+                allowed: false,
+                evaluated_at: Date.now(),
+                reasons: ["bot is STOPPED", "paper automation is disabled"],
+              },
+            }
+          : {}),
+      },
+      proposal: {},
+      risk: {},
+    };
+    fetchData({
+      decisions: [decision],
+      positions: [],
+      funding: [],
+      "decisions/skipped-1": {
+        decision,
+        agents: [],
+        fill: null,
+        protection_events: [],
+      },
+    });
+    mount(<FuturesHistory />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Inspect decision" }),
+    );
+    await screen.findByText(
+      "Rule result: HOLD. This is strategy evidence, not execution approval.",
+    );
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveTextContent("LONG: 0/1 checks passed");
+    expect(dialog).toHaveTextContent("EMA_1H: Not met");
+    expect(dialog).toHaveTextContent(
+      recorded
+        ? "bot is STOPPED; paper automation is disabled"
+        : "Exact operational gate flags were not recorded",
+    );
+    expect(dialog).toHaveTextContent("No order sizing was evaluated.");
+    expect(dialog).toHaveTextContent("No agent analysis was recorded");
+    expect(dialog).not.toHaveTextContent("approved 0 BTC");
+    expect(dialog).not.toHaveTextContent("Completed:");
+  },
+);
+
+it("explains disabled automation while keeping pause and stop available", async () => {
+  fetchData({
+    settings: {
+      ...settings,
+      automation_enabled: false,
+      bot: { ...bot, status: "RUNNING" },
+    },
+  });
+  mount(<FuturesSettingsPage />);
+  expect(await screen.findByRole("button", { name: "START" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "RESUME" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "PAUSE" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "STOP" })).toBeEnabled();
+  expect(screen.getByText(/Set AUTO_TRADING_ENABLED=true/)).toBeInTheDocument();
+});
+
+it("runs start, pause, resume and stop through the API and refreshes control state", async () => {
+  let status = "STOPPED";
+  const transitions: Record<string, string> = {
+    start: "RUNNING",
+    pause: "PAUSED",
+    resume: "RUNNING",
+    stop: "STOPPED",
+  };
+  const fetch = vi.fn(async (url: string, init?: RequestInit) => {
+    const path = url.split("/api/")[1];
+    if (path.startsWith("bot/")) {
+      expect(init?.method).toBe("POST");
+      status = transitions[path.split("/")[1]];
+      return { ok: true, json: async () => ({ ...bot, status }) };
+    }
+    return {
+      ok: true,
+      json: async () => ({ ...settings, bot: { ...bot, status } }),
+    };
+  });
+  vi.stubGlobal("fetch", fetch);
+  mount(<FuturesSettingsPage />);
+  for (const command of ["start", "pause", "resume", "stop"]) {
+    const button = await screen.findByRole("button", {
+      name: command.toUpperCase(),
+    });
+    await waitFor(() => expect(button).toBeEnabled());
+    fireEvent.click(button);
+    await screen.findByText(
+      `Command accepted. Bot state: ${transitions[command]}.`,
+    );
+  }
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "START" })).toBeEnabled(),
+  );
+  expect(screen.getByRole("button", { name: "STOP" })).toBeDisabled();
+});
+
+it("shows rejected commands and releases pending controls", async () => {
+  const fetch = vi.fn(async (url: string) =>
+    url.includes("/bot/")
+      ? {
+          ok: false,
+          json: async () => ({ detail: "Invalid state transition" }),
+        }
+      : { ok: true, json: async () => settings },
+  );
+  vi.stubGlobal("fetch", fetch);
+  mount(<FuturesSettingsPage />);
+  fireEvent.click(await screen.findByRole("button", { name: "START" }));
+  expect(
+    await screen.findByText("Invalid state transition"),
+  ).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "START" })).toBeEnabled();
+});

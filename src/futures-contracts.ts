@@ -39,6 +39,12 @@ export interface FuturesPosition {
   entry_decision_id: string;
   exit_decision_id: string | null;
 }
+export interface EligibilityCheck {
+  rule: string;
+  passed: boolean;
+  condition: string;
+  observed: Record<string, unknown>;
+}
 export interface FuturesDecision {
   id: string;
   timestamp: number;
@@ -49,7 +55,19 @@ export interface FuturesDecision {
   strategy: string;
   prompt_version: string;
   reason: string;
-  evidence: Record<string, unknown>;
+  evidence: Record<string, unknown> & {
+    eligibility?: {
+      action: string;
+      combination: string;
+      checks: EligibilityCheck[];
+      directions?: Record<string, EligibilityCheck[]>;
+    };
+    operational_gate?: {
+      evaluated_at: number;
+      allowed: boolean;
+      reasons: string[];
+    };
+  };
   proposal: Record<string, unknown>;
   risk: {
     outcome?: string;

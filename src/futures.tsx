@@ -533,14 +533,79 @@ function FuturesDecisionDetail({
               <Badge>{d.decision.status}</Badge>
             </div>
             <DecisionTime timestamp={d.decision.timestamp} />
-            <p>Completed: {stamp(d.decision.ready_at)}</p>
+            {d.decision.ready_at && (
+              <p>Decision ready: {stamp(d.decision.ready_at)}</p>
+            )}
+            {d.decision.status === "SKIPPED" && (
+              <p>
+                Analysis skipped. No agent decision or execution evaluation was
+                performed.
+              </p>
+            )}
             <p>{d.decision.reason}</p>
             <p>
               Strategy {d.decision.strategy} · prompt{" "}
               {d.decision.prompt_version}
             </p>
-            <h3>Eligibility and agent agreement</h3>
-            <pre>{JSON.stringify(d.decision.proposal, null, 2)}</pre>
+            <h3>Operational gate</h3>
+            {d.decision.evidence.operational_gate ? (
+              <p>
+                {d.decision.evidence.operational_gate.allowed
+                  ? "Routine analysis was permitted."
+                  : d.decision.evidence.operational_gate.reasons.join("; ")}
+              </p>
+            ) : (
+              <p>
+                Exact operational gate flags were not recorded for this
+                historical entry.
+              </p>
+            )}
+            <h3>Recorded strategy checks</h3>
+            {d.decision.evidence.eligibility ? (
+              <>
+                <p>
+                  Rule result: {d.decision.evidence.eligibility.action}. This is
+                  strategy evidence, not execution approval.
+                </p>
+                {Object.entries(
+                  d.decision.evidence.eligibility.directions || {
+                    Position: d.decision.evidence.eligibility.checks,
+                  },
+                ).map(([side, checks]) => (
+                  <details key={side}>
+                    <summary>
+                      {side}: {checks.filter((c) => c.passed).length}/
+                      {checks.length} checks passed
+                    </summary>
+                    <p>
+                      Combination:{" "}
+                      {d.decision.evidence.eligibility?.combination}
+                    </p>
+                    {checks.map((c) => (
+                      <div className="agent" key={c.rule}>
+                        <strong>
+                          {c.rule}: {c.passed ? "Passed" : "Not met"}
+                        </strong>
+                        <p>{c.condition}</p>
+                        <pre>{JSON.stringify(c.observed, null, 2)}</pre>
+                      </div>
+                    ))}
+                  </details>
+                ))}
+              </>
+            ) : (
+              <p>No strategy checks were recorded.</p>
+            )}
+            <h3>Agent analysis</h3>
+            {!d.agents.length && (
+              <p>No agent analysis was recorded for this entry.</p>
+            )}
+            {Object.keys(d.decision.proposal).length > 0 && (
+              <details>
+                <summary>Recorded proposal</summary>
+                <pre>{JSON.stringify(d.decision.proposal, null, 2)}</pre>
+              </details>
+            )}
             {d.agents.map((a) => (
               <div className="agent" key={a.id}>
                 <Badge>{a.role}</Badge>
@@ -562,16 +627,40 @@ function FuturesDecisionDetail({
             <h3>Deterministic execution risk</h3>
             <Badge>{d.decision.risk.outcome || "Not evaluated"}</Badge>
             <p>{d.decision.risk.reasons?.join("; ")}</p>
-            <p>
-              Proposed {d.decision.risk.proposed_quantity || "0"} BTC · approved{" "}
-              {d.decision.risk.quantity || "0"} BTC · leverage{" "}
-              {d.decision.risk.leverage || "—"}x
-            </p>
-            <pre>{JSON.stringify(d.decision.risk, null, 2)}</pre>
+            {d.decision.risk.proposed_quantity != null ||
+            d.decision.risk.quantity != null ? (
+              <p>
+                {d.decision.risk.proposed_quantity != null && (
+                  <>Proposed {d.decision.risk.proposed_quantity} BTC ? </>
+                )}
+                {d.decision.risk.quantity != null && (
+                  <>approved {d.decision.risk.quantity} BTC</>
+                )}
+                {d.decision.risk.leverage != null && (
+                  <> ? leverage {d.decision.risk.leverage}x</>
+                )}
+              </p>
+            ) : (
+              <p>No order sizing was evaluated.</p>
+            )}
+            {Object.keys(d.decision.risk).length > 0 && (
+              <details>
+                <summary>Recorded risk evidence</summary>
+                <pre>{JSON.stringify(d.decision.risk, null, 2)}</pre>
+              </details>
+            )}
             <h3>Execution / liquidation settlement</h3>
-            <pre>{JSON.stringify(d.fill, null, 2)}</pre>
+            {d.fill ? (
+              <pre>{JSON.stringify(d.fill, null, 2)}</pre>
+            ) : (
+              <p>No fill or liquidation settlement is linked to this entry.</p>
+            )}
             <h3>Protective attempts</h3>
-            <pre>{JSON.stringify(d.protection_events, null, 2)}</pre>
+            {d.protection_events.length ? (
+              <pre>{JSON.stringify(d.protection_events, null, 2)}</pre>
+            ) : (
+              <p>No protective attempts are linked to this entry.</p>
+            )}
             <details>
               <summary>Original market evidence</summary>
               <pre>{JSON.stringify(d.decision.evidence, null, 2)}</pre>
@@ -770,7 +859,8 @@ export function FuturesSettingsPage() {
     [leverage, setLeverage] = useState(0);
   const refresh = () => client.invalidateQueries({ queryKey: ["futures"] });
   const controls = useMutation({
-    mutationFn: (command: string) => api(`/bot/${command}`, { method: "POST" }),
+    mutationFn: (command: string) =>
+      api<FuturesBot>(`/bot/${command}`, { method: "POST" }),
     onSuccess: refresh,
   });
   const modelChange = useMutation({
@@ -809,25 +899,78 @@ export function FuturesSettingsPage() {
       )}
       <Panel title="Autonomous worker" aside={<Badge>{s.bot.status}</Badge>}>
         <div className="panel-body">
-          <div className="controls">
-            {["start", "pause", "resume", "stop"].map((command) => (
-              <button
-                key={command}
-                disabled={
-                  controls.isPending ||
-                  (command === "start" &&
-                    !["STOPPED", "ERROR"].includes(s.bot.status)) ||
-                  (command === "pause" && s.bot.status !== "RUNNING") ||
-                  (command === "resume" && s.bot.status !== "PAUSED") ||
-                  ((command === "start" || command === "resume") &&
-                    !s.automation_enabled)
-                }
-                onClick={() => controls.mutate(command)}
-              >
-                {command.toUpperCase()}
-              </button>
-            ))}
+          <div
+            className="controls bot-controls"
+            aria-label="Bot controls"
+            aria-busy={controls.isPending}
+          >
+            {["start", "pause", "resume", "stop"].map((command) => {
+              const requiresRunning =
+                command === "start" || command === "resume";
+              const reason = controls.isPending
+                ? "Waiting for the current command."
+                : requiresRunning && !s.automation_enabled
+                  ? "Paper automation is disabled on the server."
+                  : requiresRunning && s.risk_halt
+                    ? "Resolve the portfolio risk halt first."
+                    : command === "start" &&
+                        !["STOPPED", "ERROR"].includes(s.bot.status)
+                      ? "Start is available when stopped or recovering from an error."
+                      : command === "pause" && s.bot.status !== "RUNNING"
+                        ? "Pause is available while running."
+                        : command === "resume" && s.bot.status !== "PAUSED"
+                          ? "Resume is available while paused."
+                          : command === "stop" && s.bot.status === "STOPPED"
+                            ? "The bot is already stopped."
+                            : "";
+              return (
+                <span
+                  key={command}
+                  title={reason || `${command} paper analysis`}
+                >
+                  <button
+                    className={`bot-control bot-control-${command}`}
+                    disabled={Boolean(reason)}
+                    aria-describedby="bot-control-help"
+                    onClick={() => controls.mutate(command)}
+                  >
+                    {controls.isPending && controls.variables === command
+                      ? "APPLYING?"
+                      : command.toUpperCase()}
+                  </button>
+                </span>
+              );
+            })}
           </div>
+          <div id="bot-control-help" className="bot-control-help">
+            <p>
+              Start runs paper analysis. Pause suspends new analysis; Resume
+              continues it. Stop keeps it stopped until Start is selected.
+            </p>
+            {!s.automation_enabled && (
+              <p className="notice">
+                Start and Resume are unavailable: paper automation is disabled
+                on the server. Set AUTO_TRADING_ENABLED=true in the backend
+                configuration and restart the service to permit these controls.
+                Starting can invoke paid agents when configured.
+              </p>
+            )}
+            {s.risk_halt && (
+              <p>
+                Start and Resume are unavailable until the portfolio risk halt
+                is resolved.
+              </p>
+            )}
+            {s.bot.status === "STOPPED" && <p>The bot is already stopped.</p>}
+          </div>
+          {controls.isPending && (
+            <p role="status">Applying {controls.variables} command?</p>
+          )}
+          {controls.isSuccess && (
+            <p role="status">
+              Command accepted. Bot state: {controls.data.status}.
+            </p>
+          )}
           {controls.error && <Failure error={controls.error} />}
           <p>{s.protective_policy}</p>
           <p>
