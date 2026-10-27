@@ -129,7 +129,7 @@ export function App() {
       </div>
     );
   return (
-    <div className="app-shell">
+    <div className={`app-shell${futures ? " futures-shell" : ""}`}>
       <aside className="sidebar">
         <div className="brand">
           <div className="brand-icon">
@@ -195,7 +195,7 @@ export function App() {
             <i /> PAPER MODE
           </Badge>
         </header>
-        <div className="page">
+        <div className={`page${futures ? " futures-page" : ""}`}>
           <Routes>
             <Route
               path="/"

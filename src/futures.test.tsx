@@ -57,6 +57,7 @@ const settings = {
   protection_events: [],
 };
 const overview = {
+  portfolio: { initial: "100" },
   run_key: "test-futures",
   bot,
   position: null,
@@ -143,9 +144,9 @@ it("distinguishes wallet, free collateral, reserved margin and equity", async ()
     performance: { snapshots: [], daily: [], monthly: [] },
   });
   mount(<FuturesDashboard />);
-  expect(await screen.findByText("102.0000 USDT")).toBeInTheDocument();
-  expect(screen.getByText("99.0000 USDT")).toBeInTheDocument();
-  expect(screen.getByText("89.0000 USDT")).toBeInTheDocument();
+  expect(await screen.findByText("$102.00")).toBeInTheDocument();
+  expect(screen.getByText("99.00 USDT")).toBeInTheDocument();
+  expect(screen.getByText("89.00 USDT")).toBeInTheDocument();
   expect(screen.getByText("Futures comparison chart")).toBeInTheDocument();
   expect(screen.queryByText("BTC hold")).not.toBeInTheDocument();
 });
@@ -250,16 +251,29 @@ it("shows short actions, rejected sizing and funding transfers in the audit jour
   fireEvent.click(
     await screen.findByRole("button", { name: "Inspect decision" }),
   );
-  await waitFor(() => expect(screen.getByRole("dialog")).toHaveTextContent("approved 0 BTC"));
+  await waitFor(() =>
+    expect(screen.getByRole("dialog")).toHaveTextContent("approved 0 BTC"),
+  );
   expect(screen.getByText("-0.002000")).toBeInTheDocument();
   expect(screen.getByText("Late history recovery")).toBeInTheDocument();
 });
 
 it("keeps unresolved protective intents visible", async () => {
   fetchData({
-    overview: { ...overview, bot: { ...bot, protection: { status: "UNRESOLVED", error: "Full exit blocked by liquidity" } } },
+    overview: {
+      ...overview,
+      bot: {
+        ...bot,
+        protection: {
+          status: "UNRESOLVED",
+          error: "Full exit blocked by liquidity",
+        },
+      },
+    },
     performance: { snapshots: [], daily: [], monthly: [] },
   });
   mount(<FuturesDashboard />);
-  expect(await screen.findByRole("alert")).toHaveTextContent("Full exit blocked by liquidity");
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Full exit blocked by liquidity",
+  );
 });

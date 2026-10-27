@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { NavLink } from "react-router-dom";
+import { Activity, ArrowUpRight, Bitcoin } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./api";
 import { CandleChart, EquityChart, PeriodChart } from "./charts";
@@ -25,6 +27,58 @@ import type {
   FuturesSettings,
 } from "./futures-contracts";
 
+const signedMoney = (value: string, digits = 2) =>
+  `${Number(value) >= 0 ? "+" : ""}${money(value, digits)}`;
+
+function indicatorValue(key: string, value: unknown) {
+  if (key === "candle_time") return stamp(Number(value));
+  if (value == null) return "Unavailable";
+  if (key === "regime") return String(value).replaceAll("_", " ");
+  return Number.isFinite(Number(value))
+    ? money(Number(value), key === "momentum" ? 6 : 2)
+    : String(value);
+}
+
+const riskLabels: Record<string, string> = {
+  version: "Policy version",
+  leverage: "Leverage",
+  max_leverage: "Maximum leverage",
+  margin_mode: "Margin mode",
+  margin_allocation: "Margin allocation",
+  max_notional: "Maximum notional",
+  risk_per_trade: "Risk per trade",
+  stop_loss: "Protective stop",
+  max_daily_loss: "Daily loss limit",
+  max_drawdown: "Drawdown limit",
+  max_consecutive_losses: "Consecutive loss limit",
+  fee_rate: "Taker fee assumption",
+  slippage_rate: "Slippage assumption",
+  liquidation_fee_rate: "Liquidation cost assumption",
+  cooldown_seconds: "Trade cooldown",
+  quote_max_age_seconds: "Maximum quote age",
+  maintenance_max_age_seconds: "Tier evidence maximum age",
+  cost_assumption: "Cost assumptions",
+  liquidation_model: "Liquidation model",
+};
+const riskFractions = new Set([
+  "margin_allocation",
+  "max_notional",
+  "risk_per_trade",
+  "stop_loss",
+  "fee_rate",
+  "slippage_rate",
+  "liquidation_fee_rate",
+  "max_daily_loss",
+  "max_drawdown",
+]);
+
+function riskValue(key: string, value: unknown) {
+  if (riskFractions.has(key)) return `${money(Number(value) * 100, 2)}%`;
+  if (key.includes("leverage")) return `${value}x`;
+  if (key.endsWith("seconds")) return `${money(Number(value), 0)} seconds`;
+  return String(value);
+}
+
 function useFutures<T>(path: string) {
   return useQuery({
     queryKey: ["futures", path],
@@ -33,9 +87,12 @@ function useFutures<T>(path: string) {
   });
 }
 function Protection({ bot }: { bot: FuturesBot }) {
-  const unresolved = ["PENDING", "BLOCKED", "UNAVAILABLE", "UNRESOLVED"].includes(
-    bot.protection.status || "",
-  );
+  const unresolved = [
+    "PENDING",
+    "BLOCKED",
+    "UNAVAILABLE",
+    "UNRESOLVED",
+  ].includes(bot.protection.status || "");
   return (
     <>
       {bot.error && (
@@ -70,67 +127,140 @@ export function FuturesDashboard() {
   return (
     <>
       <div className="page-title">
-        <div className="eyebrow">
-          USDⓈ-M BTCUSDT PERPETUAL · VIRTUAL CAPITAL
+        <div className="eyebrow">YOUR RESEARCH AT A GLANCE</div>
+        <h1>
+          Futures portfolio overview <span className="title-dot" />
+        </h1>
+        <p>Every decision. Every cost. The complete picture.</p>
+        <div className="title-right">
+          <Badge
+            tone={
+              o.bot.status === "RUNNING" && !o.bot.error ? "green" : "neutral"
+            }
+          >
+            <i />
+            {o.bot.error ? "DATA ERROR" : o.bot.status}
+          </Badge>
+          <small>
+            {stale
+              ? "Awaiting fresh mark data"
+              : `Updated ${stamp(o.market_timestamp)}`}
+          </small>
         </div>
-        <h1>Futures portfolio overview</h1>
-        <p>Research run {o.run_key}. Spot history remains separate.</p>
-        <Badge>{o.bot.status}</Badge>
       </div>
       <Protection bot={o.bot} />
-    {o.risk_halt && <div className="notice error" role="alert">AI portfolio risk halt: new exposure is disabled. Protective monitoring remains active.</div>}
+      {o.risk_halt && (
+        <div className="notice error" role="alert">
+          AI portfolio risk halt: new exposure is disabled. Protective
+          monitoring remains active.
+        </div>
+      )}
       {stale && (
         <div className="notice error">
           Mark data is unavailable or stale. Displayed equity is the last
           observed valuation.
         </div>
       )}
-      <div className="metrics-row">
-        <Metric
-          label="Total equity"
-          value={`${money(o.equity, 4)} USDT`}
-          sub={`Lifetime ${money(o.lifetime_pnl, 4)} · ${money(o.return_percent)}%`}
-        />
-        <Metric
-          label="Wallet balance"
-          value={`${money(o.wallet, 4)} USDT`}
-          sub="Settled balance, including reserved collateral"
-        />
-        <Metric
-          label="Free balance"
-          value={`${money(o.free_balance, 4)} USDT`}
-          sub={`Isolated margin ${money(o.margin, 4)} USDT`}
-        />
-        <Metric
-          label="Position"
-          value={o.position_side}
-          sub={
-            o.position
-              ? `${o.position.quantity} BTC contracts · ${o.position.leverage}x ISOLATED`
-              : "No open Futures position"
-          }
-        />
+      <div className="hero-grid">
+        <section className="equity-card" aria-label="Portfolio equity">
+          <span className="eyebrow">
+            TOTAL PORTFOLIO EQUITY <Badge>VIRTUAL USDT</Badge>
+          </span>
+          <div className="equity-value">
+            <span className="equity-amount">${money(o.equity)}</span>
+            <span>USDT</span>
+          </div>
+          <div
+            className={Number(o.lifetime_pnl) >= 0 ? "positive" : "negative"}
+          >
+            <ArrowUpRight size={16} aria-hidden="true" />
+            {signedMoney(o.lifetime_pnl)} USDT
+            <Badge tone={Number(o.return_percent) >= 0 ? "green" : "red"}>
+              {money(o.return_percent)}%
+            </Badge>
+            <span className="muted">since inception</span>
+          </div>
+          <div className="hero-bottom futures-balances">
+            <div>
+              Starting capital
+              <strong>{money(o.portfolio?.initial)} USDT</strong>
+            </div>
+            <div>
+              Wallet balance<strong>{money(o.wallet)} USDT</strong>
+            </div>
+            <div>
+              Free balance<strong>{money(o.free_balance)} USDT</strong>
+            </div>
+            <div>
+              Isolated margin<strong>{money(o.margin)} USDT</strong>
+            </div>
+          </div>
+        </section>
+        <section className="btc-card" aria-label="Bitcoin Futures market">
+          <div className="btc-card-top">
+            <span className="coin">
+              <Bitcoin size={23} aria-hidden="true" />
+            </span>
+            <div>
+              <strong>Bitcoin</strong>
+              <small>BTC / USDT · PERPETUAL</small>
+            </div>
+            <Badge>{stale ? "STALE" : "FUTURES"}</Badge>
+          </div>
+          <strong className="btc-price">
+            ${o.market_timestamp ? money(o.mark) : "—"}
+          </strong>
+          <p>Binance USD-M Futures · mark price</p>
+          <div className="market-line">
+            <Activity size={16} aria-hidden="true" />
+            <span>
+              {stale
+                ? "Awaiting fresh observations"
+                : "Market observations connected"}
+            </span>
+          </div>
+          <div className="position-summary">
+            <span>Current position</span>
+            <Badge
+              tone={
+                o.position_side === "LONG"
+                  ? "green"
+                  : o.position_side === "SHORT"
+                    ? "red"
+                    : "neutral"
+              }
+            >
+              {o.position_side}
+            </Badge>
+            {o.position && <small>{o.position.leverage}x isolated</small>}
+          </div>
+          <NavLink to="/market">
+            Explore BTC futures <ArrowUpRight size={16} aria-hidden="true" />
+          </NavLink>
+        </section>
       </div>
       <div className="metrics-row">
         <Metric
-          label="Unrealized P&L"
-          value={`${money(o.unrealized_pnl, 4)} USDT`}
-          sub="Mark-price P&L before future closing costs"
+          label="Today's trading P&L"
+          value={`${signedMoney(o.today_pnl)} USDT`}
+          positive={Number(o.today_pnl) >= 0}
+          sub="Current UTC day · incomplete"
         />
         <Metric
-          label="Realized trading P&L"
-          value={`${money(o.realized_pnl, 4)} USDT`}
-          sub="Includes commissions when charged"
+          label="This month's P&L"
+          value={`${signedMoney(o.month_pnl)} USDT`}
+          positive={Number(o.month_pnl) >= 0}
+          sub="Current UTC month · incomplete"
         />
         <Metric
-          label="Today / month"
-          value={`${money(o.today_pnl, 4)} / ${money(o.month_pnl, 4)}`}
-          sub="USDT · current UTC periods incomplete"
+          label="Realized / unrealized"
+          value={`${money(o.realized_pnl)} / ${money(o.unrealized_pnl)}`}
+          sub="USDT · commissions included when charged"
         />
         <Metric
-          label="Funding net"
-          value={`${money(o.funding, 6)} USDT`}
-          sub="Positive receipt · negative payment"
+          label="Completed trades"
+          value={String(o.closed_trades)}
+          sub={`${o.position ? 1 : 0} open · ${o.winning_trades} wins · ${o.liquidations} liquidations`}
         />
       </div>
       {o.position && (
@@ -160,17 +290,27 @@ export function FuturesDashboard() {
       )}
       {performanceError && <Failure error={performanceError} />}
       <Panel
-        title="Futures equity comparison"
-        aside={<Badge>AI / DETERMINISTIC</Badge>}
+        title="Portfolio performance"
+        aside={
+          <div className="legend">
+            <span className="lime-dot" />
+            AI portfolio <span className="orange-dot" />
+            Deterministic comparator
+          </div>
+        }
       >
         <EquityChart rows={p?.snapshots || []} futures />
+        <div className="chart-foot">
+          <span>Same capital, risk and execution assumptions</span>
+          <span>USDT · valued at observed mark</span>
+        </div>
         <p className="panel-note">{o.benchmark_assumptions}</p>
       </Panel>
       <div className="two-col">
-        <Panel title="Daily P&L · UTC">
+        <Panel title="Daily profit & loss" aside={<Badge>UTC</Badge>}>
           <PeriodChart rows={p?.daily || []} />
         </Panel>
-        <Panel title="Monthly P&L · UTC">
+        <Panel title="Monthly profit & loss" aside={<Badge>UTC</Badge>}>
           <PeriodChart rows={p?.monthly || []} />
         </Panel>
       </div>
@@ -212,18 +352,29 @@ export function FuturesDashboard() {
             assumes USDT≈USD.
           </p>
         </Panel>
-        <Panel title="Latest research decision">
-          {o.recent_decision ? (
-            <>
-              <ActionBadge action={o.recent_decision.action} />
-              <Badge>{o.recent_decision.status}</Badge>
-              <DecisionTime timestamp={o.recent_decision.timestamp} />
-              <p>{o.recent_decision.reason}</p>
-            </>
-          ) : (
-            <p>No decisions yet.</p>
-          )}
-          <p className="panel-note">{o.liquidation_assumptions}</p>
+        <Panel
+          title="Latest research decision"
+          aside={
+            <NavLink to="/decisions" className="text-link">
+              All decisions <ArrowUpRight size={14} />
+            </NavLink>
+          }
+        >
+          <div className="panel-body decision-summary">
+            {o.recent_decision ? (
+              <>
+                <div className="decision-meta">
+                  <ActionBadge action={o.recent_decision.action} />
+                  <Badge>{o.recent_decision.status}</Badge>
+                </div>
+                <DecisionTime timestamp={o.recent_decision.timestamp} />
+                <p>{o.recent_decision.reason}</p>
+              </>
+            ) : (
+              <p>No decisions yet.</p>
+            )}
+            <p className="panel-note">{o.liquidation_assumptions}</p>
+          </div>
         </Panel>
       </div>
     </>
@@ -246,17 +397,35 @@ export function FuturesMarketPage() {
         <div className="empty">Awaiting Futures worker observations.</div>
       ) : (
         <>
-          <div className="metrics-row">
-            <Metric
-              label="Futures bid / ask"
-              value={`${money(m.quote?.bid)} / ${money(m.quote?.ask)}`}
-              sub={`Quote observed: ${stamp(m.quote_timestamp)}`}
-            />
-            <Metric
-              label="Mark / index"
-              value={`${money(mark?.mark)} / ${money(mark?.index)}`}
-              sub={`Mark source: ${stamp(mark?.mark_time)}`}
-            />
+          <div className="metrics-row market-metrics">
+            <div className="metric">
+              <span>Futures bid / ask</span>
+              <div className="price-pair">
+                <div>
+                  <small>Bid</small>
+                  <strong>{money(m.quote?.bid)}</strong>
+                </div>
+                <div>
+                  <small>Ask</small>
+                  <strong>{money(m.quote?.ask)}</strong>
+                </div>
+              </div>
+              <small>Quote observed: {stamp(m.quote_timestamp)}</small>
+            </div>
+            <div className="metric">
+              <span>Mark / index</span>
+              <div className="price-pair">
+                <div>
+                  <small>Mark</small>
+                  <strong>{money(mark?.mark)}</strong>
+                </div>
+                <div>
+                  <small>Index</small>
+                  <strong>{money(mark?.index)}</strong>
+                </div>
+              </div>
+              <small>Mark source: {stamp(mark?.mark_time)}</small>
+            </div>
             <Metric
               label="Last published funding rate"
               value={
@@ -296,9 +465,9 @@ export function FuturesMarketPage() {
                     <div key={key}>
                       <span>{key.replaceAll("_", " ")}</span>
                       <strong>
-                        {key === "candle_time"
-                          ? stamp(Number(value))
-                          : String(value)}
+                        <span title={String(value)} className="indicator-value">
+                          {indicatorValue(key, value)}
+                        </span>
                       </strong>
                     </div>
                   ))}
@@ -307,15 +476,26 @@ export function FuturesMarketPage() {
             ))}
           </div>
           <Panel title="Contract constraints">
-            <p>
-              Quantity step {m.contract?.step || "Unavailable"} BTC · minimum
-              quantity {m.contract?.min_qty || "Unavailable"} BTC · minimum
-              notional {m.contract?.min_notional || "Unavailable"} USDT
-            </p>
-            <p className="panel-note">
-              Current funding is not a forecast or a guarantee of the next
-              settlement rate.
-            </p>
+            <div className="panel-body">
+              <dl className="contract-grid">
+                <div>
+                  <dt>Quantity step</dt>
+                  <dd>{m.contract?.step || "Unavailable"} BTC</dd>
+                </div>
+                <div>
+                  <dt>Minimum quantity</dt>
+                  <dd>{m.contract?.min_qty || "Unavailable"} BTC</dd>
+                </div>
+                <div>
+                  <dt>Minimum notional</dt>
+                  <dd>{m.contract?.min_notional || "Unavailable"} USDT</dd>
+                </div>
+              </dl>
+              <p className="panel-note">
+                Current funding is not a forecast or a guarantee of the next
+                settlement rate.
+              </p>
+            </div>
           </Panel>
         </>
       )}
@@ -348,8 +528,10 @@ function FuturesDecisionDetail({
           <Loading />
         ) : (
           <>
-            <ActionBadge action={d.decision.action} />
-            <Badge>{d.decision.status}</Badge>
+            <div className="decision-meta">
+              <ActionBadge action={d.decision.action} />
+              <Badge>{d.decision.status}</Badge>
+            </div>
             <DecisionTime timestamp={d.decision.timestamp} />
             <p>Completed: {stamp(d.decision.ready_at)}</p>
             <p>{d.decision.reason}</p>
@@ -418,19 +600,21 @@ export function FuturesHistory() {
     <>
       <div className="page-title">
         <h1>Futures decisions & trading history</h1>
-        <label>
-          Research portfolio{" "}
-          <select
-            value={kind}
-            onChange={(e) => {
-              setKind(e.target.value);
-              setOffset(0);
-            }}
-          >
-            <option value="AI">AI-controlled</option>
-            <option value="DETERMINISTIC">Deterministic comparator</option>
-          </select>
-        </label>
+        <div className="history-toolbar">
+          <label className="form-field">
+            Research portfolio{" "}
+            <select
+              value={kind}
+              onChange={(e) => {
+                setKind(e.target.value);
+                setOffset(0);
+              }}
+            >
+              <option value="AI">AI-controlled</option>
+              <option value="DETERMINISTIC">Deterministic comparator</option>
+            </select>
+          </label>
+        </div>
         <p>Spot records are preserved separately and excluded from this run.</p>
       </div>
       {error && <Failure error={error} />}
@@ -456,7 +640,7 @@ export function FuturesHistory() {
                     <ActionBadge action={d.action} />
                   </td>
                   <td>{d.status}</td>
-                  <td>{d.reason}</td>
+                  <td className="reason-cell">{d.reason}</td>
                   <td>
                     <button onClick={() => select(d.id)}>
                       Inspect decision
@@ -467,9 +651,20 @@ export function FuturesHistory() {
             </tbody>
           </table>
         </div>
+        {decisions && !decisions.length && (
+          <div className="empty">
+            No decisions recorded for this portfolio yet.
+          </div>
+        )}
       </Panel>
       {positionError && <Failure error={positionError} />}
       <Panel title="Isolated positions">
+        {positions && !positions.length && (
+          <div className="empty">
+            No Futures positions yet. Open and closed positions will appear
+            here.
+          </div>
+        )}
         {positions?.map((p) => (
           <article className="position" key={p.id}>
             <Badge>
@@ -534,6 +729,11 @@ export function FuturesHistory() {
             </tbody>
           </table>
         </div>
+        {funding && !funding.length && (
+          <div className="empty">
+            No funding transfers recorded for this portfolio.
+          </div>
+        )}
       </Panel>
       <div className="pagination">
         <button
@@ -597,33 +797,44 @@ export function FuturesSettingsPage() {
   return (
     <>
       <div className="page-title">
+        <div className="eyebrow">RESEARCH CONFIGURATION</div>
         <h1>Futures bot settings</h1>
         <p>Paper-only · BTCUSDT perpetual · research run {s.run_key}</p>
       </div>
       <Protection bot={s.bot} />
-    {s.risk_halt && <div className="notice error" role="alert">Portfolio risk halt requires operator review before new exposure.</div>}
-      <Panel title="Autonomous worker" aside={<Badge>{s.bot.status}</Badge>}>
-        <div className="controls">
-          {["start", "pause", "resume", "stop"].map((command) => (
-            <button
-              key={command}
-              disabled={
-                controls.isPending ||
-                ((command === "start" || command === "resume") &&
-                  !s.automation_enabled)
-              }
-              onClick={() => controls.mutate(command)}
-            >
-              {command.toUpperCase()}
-            </button>
-          ))}
+      {s.risk_halt && (
+        <div className="notice error" role="alert">
+          Portfolio risk halt requires operator review before new exposure.
         </div>
-        {controls.error && <Failure error={controls.error} />}
-        <p>{s.protective_policy}</p>
-        <p>
-          Heartbeat {stamp(s.bot.heartbeat)} · initial balance{" "}
-          {s.initial_capital} virtual USDT
-        </p>
+      )}
+      <Panel title="Autonomous worker" aside={<Badge>{s.bot.status}</Badge>}>
+        <div className="panel-body">
+          <div className="controls">
+            {["start", "pause", "resume", "stop"].map((command) => (
+              <button
+                key={command}
+                disabled={
+                  controls.isPending ||
+                  (command === "start" &&
+                    !["STOPPED", "ERROR"].includes(s.bot.status)) ||
+                  (command === "pause" && s.bot.status !== "RUNNING") ||
+                  (command === "resume" && s.bot.status !== "PAUSED") ||
+                  ((command === "start" || command === "resume") &&
+                    !s.automation_enabled)
+                }
+                onClick={() => controls.mutate(command)}
+              >
+                {command.toUpperCase()}
+              </button>
+            ))}
+          </div>
+          {controls.error && <Failure error={controls.error} />}
+          <p>{s.protective_policy}</p>
+          <p>
+            Heartbeat {stamp(s.bot.heartbeat)} · initial balance{" "}
+            {money(s.initial_capital)} virtual USDT
+          </p>
+        </div>
       </Panel>
       {s.tier_status !== "CONFIGURED_OPERATOR_EVIDENCE" && (
         <div className="notice error" role="alert">
@@ -633,98 +844,140 @@ export function FuturesSettingsPage() {
         </div>
       )}
       <Panel title="Isolated margin and deterministic risk">
-        <label>
-          Leverage{" "}
-          <select
-            value={leverage || Number(s.risk.leverage)}
-            onChange={(e) => setLeverage(Number(e.target.value))}
-          >
-            {Array.from({ length: s.max_leverage }, (_, i) => i + 1).map(
-              (n) => (
-                <option key={n} value={n}>
-                  {n}x
-                </option>
-              ),
-            )}
-          </select>
-        </label>
-        <button
-          disabled={
-            !leverage || s.bot.status === "RUNNING" || leverageChange.isPending
-          }
-          onClick={() => leverageChange.mutate()}
-        >
-          Save leverage
-        </button>
-        {leverageChange.error && <Failure error={leverageChange.error} />}
-        <p>
-          Pause and close positions in both portfolios before changing leverage.
-        </p>
-        <div className="economics">
-          {Object.entries(s.risk)
-            .filter(([k]) => k !== "tiers")
-            .map(([k, v]) => (
-              <div key={k}>
-                <span>{k.replaceAll("_", " ")}</span>
-                <strong>{["margin_allocation", "max_notional", "risk_per_trade", "stop_loss", "fee_rate", "slippage_rate", "liquidation_fee_rate", "max_daily_loss", "max_drawdown"].includes(k) ? `${money(Number(v)*100, 3)}%` : k.includes("leverage") ? `${v}x` : k.endsWith("seconds") ? `${v}s` : String(v)}</strong>
-              </div>
-            ))}
+        <div className="panel-body">
+          <div className="form-row">
+            <label className="form-field">
+              Leverage
+              <select
+                value={leverage || Number(s.risk.leverage)}
+                onChange={(e) => setLeverage(Number(e.target.value))}
+              >
+                {Array.from({ length: s.max_leverage }, (_, i) => i + 1).map(
+                  (n) => (
+                    <option key={n} value={n}>
+                      {n}x
+                    </option>
+                  ),
+                )}
+              </select>
+            </label>
+            <button
+              disabled={
+                !leverage ||
+                s.bot.status === "RUNNING" ||
+                leverageChange.isPending
+              }
+              onClick={() => leverageChange.mutate()}
+            >
+              Save leverage
+            </button>
+          </div>
+          {leverageChange.error && <Failure error={leverageChange.error} />}
+          <p>
+            Pause and close positions in both portfolios before changing
+            leverage.
+          </p>
+          <dl className="risk-grid">
+            {Object.entries(s.risk)
+              .filter(([k]) => k !== "tiers")
+              .map(([k, v]) => (
+                <div
+                  key={k}
+                  className={
+                    k.endsWith("assumption") || k === "liquidation_model"
+                      ? "risk-description"
+                      : ""
+                  }
+                >
+                  <dt>{riskLabels[k] || k.replaceAll("_", " ")}</dt>
+                  <dd>{riskValue(k, v)}</dd>
+                </div>
+              ))}
+          </dl>
+          <details>
+            <summary>Maintenance-tier evidence and verification time</summary>
+            <pre>{JSON.stringify(s.risk.tiers, null, 2)}</pre>
+          </details>
+          <p className="panel-note">
+            Risk and cost fractions are displayed as percentages. Costs and
+            liquidation are explicitly labelled simulation assumptions.
+          </p>
         </div>
-        <details>
-          <summary>Maintenance-tier evidence and verification time</summary>
-          <pre>{JSON.stringify(s.risk.tiers, null, 2)}</pre>
-        </details>
-        <p className="panel-note">
-          Risk and cost fractions are displayed as percentages. Costs and liquidation are explicitly labelled simulation assumptions.
-        </p>
       </Panel>
       <Panel title="AI model and spending">
-        <p>
-          Daily limit ${s.daily_ai_budget} · spent plus reserved $
-          {money(s.daily_ai_spent_or_reserved, 6)}
-        </p>
-        <label>
-          Model{" "}
-          <select
-            value={model || s.model}
-            onChange={(e) => setModel(e.target.value)}
-          >
-            {s.available_models.map((x) => (
-              <option key={x.model} value={x.model}>
-                {x.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <p>
-          Per million tokens: input ${selected?.input_per_million} · cached $
-          {selected?.cached_input_per_million} · output $
-          {selected?.output_per_million}
-        </p>
-        <p>
-          Pricing verified {selected?.verified_at}. Estimates are separate from
-          provider invoices. Whole-chain reservation occurs before paid
-          inference.
-        </p>
-        <button
-          disabled={
-            s.bot.status === "RUNNING" || modelChange.isPending || !selected
-          }
-          onClick={() => modelChange.mutate()}
-        >
-          Save model
-        </button>
-        {modelChange.error && <Failure error={modelChange.error} />}
+        <div className="panel-body">
+          <dl className="spending-summary">
+            <div>
+              <dt>Daily AI budget</dt>
+              <dd>${money(s.daily_ai_budget)}</dd>
+            </div>
+            <div>
+              <dt>Spent + reserved today</dt>
+              <dd>${money(s.daily_ai_spent_or_reserved, 6)}</dd>
+            </div>
+          </dl>
+          <div className="form-row">
+            <label className="form-field">
+              Model
+              <select
+                value={model || s.model}
+                onChange={(e) => setModel(e.target.value)}
+              >
+                {s.available_models.map((x) => (
+                  <option key={x.model} value={x.model}>
+                    {x.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              disabled={
+                s.bot.status === "RUNNING" || modelChange.isPending || !selected
+              }
+              onClick={() => modelChange.mutate()}
+            >
+              Save model
+            </button>
+          </div>
+          <dl className="pricing-grid">
+            <div>
+              <dt>Input / 1M tokens</dt>
+              <dd>${money(selected?.input_per_million)}</dd>
+            </div>
+            <div>
+              <dt>Cached input / 1M tokens</dt>
+              <dd>${money(selected?.cached_input_per_million, 3)}</dd>
+            </div>
+            <div>
+              <dt>Output / 1M tokens</dt>
+              <dd>${money(selected?.output_per_million)}</dd>
+            </div>
+          </dl>
+          <p className="panel-note">
+            Pricing verified {selected?.verified_at}. Estimates are separate
+            from provider invoices. Whole-chain reservation occurs before paid
+            inference.
+          </p>
+          {modelChange.error && <Failure error={modelChange.error} />}
+        </div>
       </Panel>
       <Panel title="Protective monitoring history">
-        {s.protection_events.map((e) => (
-          <details key={e.id}>
-            <summary>
-              {stamp(e.timestamp)} · {e.status}
-            </summary>
-            <pre>{JSON.stringify(e.evidence, null, 2)}</pre>
-          </details>
-        ))}
+        {s.protection_events.length === 0 ? (
+          <div className="empty">
+            No protective monitoring incidents recorded.
+          </div>
+        ) : (
+          <div className="panel-body protection-history">
+            {s.protection_events.map((e) => (
+              <details key={e.id}>
+                <summary>
+                  {stamp(e.timestamp)} · {e.status}
+                </summary>
+                <pre>{JSON.stringify(e.evidence, null, 2)}</pre>
+              </details>
+            ))}
+          </div>
+        )}
       </Panel>
     </>
   );

@@ -63,6 +63,7 @@ export interface FuturesDecision {
   };
 }
 export interface FuturesOverview {
+  portfolio: { initial: string };
   risk_halt: boolean;
   deterministic_risk_halt: boolean;
   run_key: string;
