@@ -494,6 +494,26 @@ it("shows short actions, rejected sizing and funding transfers in the audit jour
   expect(screen.getByText("Late history recovery")).toBeInTheDocument();
 });
 
+it.each(["protection", "analysis"])("explains HTTP 451 from %s", async (stage) => {
+  fetchData({
+    overview: {
+      ...overview,
+      bot: {
+        ...bot,
+        error: stage === "analysis" ? "ANALYSIS:MarketUnavailable: Public Futures time: HTTP_451" : null,
+        protection: stage === "protection"
+          ? { status: "UNAVAILABLE", detail: "Public Futures time: HTTP_451" }
+          : bot.protection,
+      },
+    },
+    performance: { snapshots: [], daily: [], monthly: [] },
+  });
+  mount(<FuturesDashboard />);
+  expect(await screen.findByText("Binance Futures data access is restricted (HTTP 451)."))
+    .toBeInTheDocument();
+  expect(screen.getByText(/new exposure remains blocked/)).toBeInTheDocument();
+});
+
 it("keeps unresolved protective intents visible", async () => {
   fetchData({
     overview: {

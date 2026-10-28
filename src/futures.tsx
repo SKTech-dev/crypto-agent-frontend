@@ -89,6 +89,9 @@ function useFutures<T>(path: string) {
   });
 }
 function Protection({ bot }: { bot: FuturesBot }) {
+  const accessRestricted = [bot.error, bot.protection.detail].some((message) =>
+    message?.includes("HTTP_451"),
+  );
   const unresolved = [
     "PENDING",
     "BLOCKED",
@@ -97,6 +100,15 @@ function Protection({ bot }: { bot: FuturesBot }) {
   ].includes(bot.protection.status || "");
   return (
     <>
+      {accessRestricted && (
+        <div className="notice error" role="alert">
+          <strong>Binance Futures data access is restricted (HTTP 451).</strong>{" "}
+          The data provider rejected requests from the backend server. Review
+          the hosting region and provider access policy to restore an authorized
+          data connection. Prices, funding and protective monitoring cannot
+          recover until access is restored; new exposure remains blocked.
+        </div>
+      )}
       {bot.error && (
         <div className="notice error" role="alert">
           Worker: {bot.error}
