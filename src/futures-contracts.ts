@@ -144,6 +144,11 @@ export interface FuturesMarket {
   };
 }
 export interface FuturesSettings {
+  halt_recovery?: {
+    kind: "AI" | "DETERMINISTIC";
+    halted: boolean;
+    blockers: string[];
+  }[];
   risk_halt: boolean;
   bot: FuturesBot;
   run_key: string;

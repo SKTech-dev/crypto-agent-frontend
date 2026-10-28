@@ -121,6 +121,9 @@ function Protection({ bot }: { bot: FuturesBot }) {
 
 export function FuturesDashboard() {
   const { data: o, error } = useFutures<FuturesOverview>("overview");
+  const readiness = useFutures<{ status: string; reasons: string[] }>(
+    "readiness",
+  );
   const { data: p, error: performanceError } =
     useFutures<FuturesPerformance>("performance");
   if (error) return <Failure error={error} />;
@@ -128,6 +131,12 @@ export function FuturesDashboard() {
   const stale = !o.market_timestamp || Date.now() - o.market_timestamp > 60_000;
   return (
     <>
+      {readiness.data?.status === "degraded" && (
+        <div className="notice error" role="alert">
+          Service needs attention: {readiness.data.reasons.join(", ")}
+        </div>
+      )}
+      {readiness.error && <Failure error={readiness.error} />}
       <div className="page-title">
         <div className="eyebrow">YOUR RESEARCH AT A GLANCE</div>
         <h1>
@@ -292,7 +301,7 @@ export function FuturesDashboard() {
       )}
       {performanceError && <Failure error={performanceError} />}
       <Panel
-        title="Portfolio performance"
+        title="Portfolio performance — last 30 days"
         aside={
           <div className="legend">
             <span className="lime-dot" />
@@ -313,6 +322,10 @@ export function FuturesDashboard() {
           <PeriodChart rows={p?.daily || []} />
         </Panel>
         <Panel title="Monthly profit & loss" aside={<Badge>UTC</Badge>}>
+          <p className="panel-note">
+            Selected 30-day window; the first month may be partial. Missing
+            observations are not reconstructed.
+          </p>
           <PeriodChart rows={p?.monthly || []} />
         </Panel>
       </div>
@@ -508,11 +521,15 @@ export function FuturesMarketPage() {
 function FuturesDecisionDetail({
   id,
   close,
+  runKey,
 }: {
   id: string;
   close: () => void;
+  runKey?: string;
 }) {
-  const { data: d, error } = useFutures<FuturesDetail>(`decisions/${id}`);
+  const { data: d, error } = useFutures<FuturesDetail>(
+    `decisions/${id}${runKey ? `?run_key=${encodeURIComponent(runKey)}` : ""}`,
+  );
   return (
     <div className="modal-backdrop" onClick={close}>
       <section
@@ -675,19 +692,23 @@ function FuturesDecisionDetail({
 }
 
 export function FuturesHistory() {
+  const [runKey, setRunKey] = useState("");
+  const runs =
+    useFutures<{ run_key: string; current: boolean; status: string }[]>("runs");
+  const runParam = runKey ? `&run_key=${encodeURIComponent(runKey)}` : "";
   const [kind, setKind] = useState("AI"),
     [selected, select] = useState<string | null>(null);
   const decisionPage = usePagination();
   const positionPage = usePagination();
   const fundingPage = usePagination();
   const decisionQuery = useFutures<FuturesDecision[]>(
-    `decisions?kind=${kind}&offset=${decisionPage.offset}&limit=${decisionPage.pageSize + 1}`,
+    `decisions?kind=${kind}&offset=${decisionPage.offset}&limit=${decisionPage.pageSize + 1}${runParam}`,
   );
   const positionQuery = useFutures<FuturesPosition[]>(
-    `positions?kind=${kind}&offset=${positionPage.offset}&limit=${positionPage.pageSize + 1}`,
+    `positions?kind=${kind}&offset=${positionPage.offset}&limit=${positionPage.pageSize + 1}${runParam}`,
   );
   const fundingQuery = useFutures<FuturesFunding[]>(
-    `funding?kind=${kind}&offset=${fundingPage.offset}&limit=${fundingPage.pageSize + 1}`,
+    `funding?kind=${kind}&offset=${fundingPage.offset}&limit=${fundingPage.pageSize + 1}${runParam}`,
   );
   const decisions = decisionQuery.data?.slice(0, decisionPage.pageSize);
   const positions = positionQuery.data?.slice(0, positionPage.pageSize);
@@ -696,6 +717,35 @@ export function FuturesHistory() {
     <>
       <div className="page-title">
         <h1>Futures decisions & trading history</h1>
+        {runs.error && <Failure error={runs.error} />}
+        <label className="form-field">
+          Research run
+          <select
+            value={runKey}
+            onChange={(e) => {
+              setRunKey(e.target.value);
+              select(null);
+              decisionPage.setPage(0);
+              positionPage.setPage(0);
+              fundingPage.setPage(0);
+            }}
+          >
+            <option value="">Current run</option>
+            {runs.data
+              ?.filter((r) => !r.current)
+              .map((r) => (
+                <option key={r.run_key} value={r.run_key}>
+                  {r.run_key} (archived, read-only)
+                </option>
+              ))}
+          </select>
+        </label>
+        {runKey && (
+          <p className="notice">
+            Viewing archived history. Bot controls apply only to the current
+            run.
+          </p>
+        )}
         <div className="history-toolbar">
           <label className="form-field">
             Research portfolio{" "}
@@ -873,7 +923,11 @@ export function FuturesHistory() {
         />
       </Panel>
       {selected && (
-        <FuturesDecisionDetail id={selected} close={() => select(null)} />
+        <FuturesDecisionDetail
+          id={selected}
+          runKey={runKey}
+          close={() => select(null)}
+        />
       )}
     </>
   );
@@ -884,6 +938,7 @@ export function FuturesSettingsPage() {
     client = useQueryClient();
   const [model, setModel] = useState(""),
     [leverage, setLeverage] = useState(0);
+  const [reviewReason, setReviewReason] = useState("");
   const historyPage = usePagination();
   const historyQuery = useFutures<ProtectionEvent[]>(
     `protection-events?offset=${historyPage.offset}&limit=${historyPage.pageSize + 1}`,
@@ -893,6 +948,14 @@ export function FuturesSettingsPage() {
   const controls = useMutation({
     mutationFn: (command: string) =>
       api<FuturesBot>(`/bot/${command}`, { method: "POST" }),
+    onSuccess: refresh,
+  });
+  const haltReview = useMutation({
+    mutationFn: (kind: string) =>
+      api("/risk-halt/review", {
+        method: "POST",
+        body: JSON.stringify({ kind, reason: reviewReason }),
+      }),
     onSuccess: refresh,
   });
   const modelChange = useMutation({
@@ -924,6 +987,50 @@ export function FuturesSettingsPage() {
         <p>Paper-only · BTCUSDT perpetual · research run {s.run_key}</p>
       </div>
       <Protection bot={s.bot} />
+      {s.halt_recovery?.some((r) => r.halted) && (
+        <Panel title="Review portfolio risk halts">
+          <div className="panel-body">
+            <p>
+              Pause or stop first. Recovery checks preserve balances, risk
+              limits and loss history. Persistent drawdown, loss-streak or
+              funding-shortfall blocks cannot be cleared here.
+            </p>
+            <label className="form-field">
+              Review reason
+              <textarea
+                value={reviewReason}
+                onChange={(e) => setReviewReason(e.target.value)}
+                minLength={10}
+                maxLength={500}
+              />
+            </label>
+            {s.halt_recovery
+              .filter((r) => r.halted)
+              .map((r) => (
+                <div key={r.kind}>
+                  <strong>{r.kind}</strong>
+                  {r.blockers.map((b) => (
+                    <p key={b}>{b}</p>
+                  ))}
+                  <button
+                    disabled={
+                      !!r.blockers.length ||
+                      reviewReason.trim().length < 10 ||
+                      haltReview.isPending
+                    }
+                    onClick={() => haltReview.mutate(r.kind)}
+                  >
+                    Acknowledge review and clear {r.kind} halt
+                  </button>
+                </div>
+              ))}
+            {haltReview.error && <Failure error={haltReview.error} />}
+            {haltReview.isSuccess && (
+              <p>Halt cleared. Start or resume separately when ready.</p>
+            )}
+          </div>
+        </Panel>
+      )}
       {s.risk_halt && (
         <div className="notice error" role="alert">
           Portfolio risk halt requires operator review before new exposure.

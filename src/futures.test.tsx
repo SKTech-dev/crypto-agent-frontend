@@ -114,6 +114,11 @@ function fetchData(values: Record<string, unknown>) {
       json: async () =>
         values[path] ??
         values[path.split("?")[0]] ??
+        (path === "runs"
+          ? []
+          : path === "readiness"
+            ? { status: "ready", reasons: [] }
+            : undefined) ??
         (path.startsWith("protection-events") ? [] : undefined),
     };
   });
@@ -121,6 +126,74 @@ function fetchData(values: Record<string, unknown>) {
   return fetch;
 }
 beforeEach(() => vi.restoreAllMocks());
+
+it("loads archived run journals and keeps them read-only", async () => {
+  const fetch = fetchData({
+    runs: [{ run_key: "old-run", current: false, status: "STOPPED" }],
+    decisions: [],
+    positions: [],
+    funding: [],
+  });
+  mount(<FuturesHistory />);
+  await screen.findByRole("option", { name: "old-run (archived, read-only)" });
+  fireEvent.change(screen.getByLabelText("Research run"), {
+    target: { value: "old-run" },
+  });
+  await waitFor(() =>
+    expect(
+      fetch.mock.calls.some(
+        ([url]) =>
+          url.includes("decisions?") && url.includes("run_key=old-run"),
+      ),
+    ).toBe(true),
+  );
+  expect(screen.getByText(/Viewing archived history/)).toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "START" }),
+  ).not.toBeInTheDocument();
+});
+
+it("shows degraded worker readiness separately from portfolio data", async () => {
+  fetchData({
+    overview,
+    performance: { snapshots: [], daily: [], monthly: [] },
+    readiness: { status: "degraded", reasons: ["WORKER_HEARTBEAT_STALE"] },
+  });
+  mount(<FuturesDashboard />);
+  expect(
+    await screen.findByText(/Service needs attention: WORKER_HEARTBEAT_STALE/),
+  ).toBeInTheDocument();
+});
+
+it("requires a reason and server eligibility before clearing a halt", async () => {
+  fetchData({
+    settings: {
+      ...settings,
+      halt_recovery: [
+        { kind: "AI", halted: true, blockers: [] },
+        {
+          kind: "DETERMINISTIC",
+          halted: true,
+          blockers: ["Loss-streak limit still exceeded"],
+        },
+      ],
+    },
+  });
+  mount(<FuturesSettingsPage />);
+  const ai = await screen.findByRole("button", {
+    name: "Acknowledge review and clear AI halt",
+  });
+  expect(ai).toBeDisabled();
+  fireEvent.change(screen.getByLabelText("Review reason"), {
+    target: { value: "Reviewed recovered market data" },
+  });
+  expect(ai).toBeEnabled();
+  expect(
+    screen.getByRole("button", {
+      name: "Acknowledge review and clear DETERMINISTIC halt",
+    }),
+  ).toBeDisabled();
+});
 
 function pagedHistory(count = 20, failSecondPage = false) {
   const rows = Array.from({ length: count }, (_, i) => ({
