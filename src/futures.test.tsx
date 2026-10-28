@@ -7,7 +7,7 @@ import {
 } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
-import { beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { App } from "./App";
 import {
   FuturesDashboard,
@@ -125,7 +125,15 @@ function fetchData(values: Record<string, unknown>) {
   vi.stubGlobal("fetch", fetch);
   return fetch;
 }
-beforeEach(() => vi.restoreAllMocks());
+beforeEach(() => {
+  vi.restoreAllMocks();
+  vi.spyOn(console, "error");
+  vi.spyOn(console, "warn");
+});
+afterEach(() => {
+  expect(console.error).not.toHaveBeenCalled();
+  expect(console.warn).not.toHaveBeenCalled();
+});
 
 it("loads archived run journals and keeps them read-only", async () => {
   const fetch = fetchData({
@@ -224,6 +232,9 @@ function pagedHistory(count = 20, failSecondPage = false) {
   const fetch = vi.fn(async (url: string) => {
     const path = new URL(url).pathname.split("/").pop();
     if (path === "settings") return { ok: true, json: async () => settings };
+      if (path === "runs") return { ok: true, json: async () => [
+        { run_key: "test-futures", current: true, status: "RUNNING" },
+      ] };
     const params = new URL(url).searchParams;
     const offset = Number(params.get("offset") || 0);
     if (failSecondPage && path === "decisions" && offset > 0) {
