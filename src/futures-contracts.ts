@@ -11,7 +11,7 @@ export interface FuturesBot {
   heartbeat: number | null;
   error: string | null;
   funding_status: string;
-  protection: { status?: string; error?: string };
+  protection: { status?: string; error?: string; detail?: string | null };
 }
 export interface FuturesPosition {
   id: string;

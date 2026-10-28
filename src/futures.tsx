@@ -106,6 +106,7 @@ function Protection({ bot }: { bot: FuturesBot }) {
         <div className="notice error" role="alert">
           Protection {bot.protection.status}:{" "}
           {bot.protection.error || "Exit intent awaiting a valid observation."}{" "}
+          {bot.protection.detail && <>{bot.protection.detail}. </>}
           Position exposure remains until closure or simulated liquidation.
         </div>
       )}
