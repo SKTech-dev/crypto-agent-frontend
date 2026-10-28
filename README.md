@@ -43,7 +43,11 @@ inspect the script source before changing the policy. Netlify may inject a HUD
 at `/.netlify/scripts/hud` that creates inline scripts inside a `srcdoc` iframe.
 The application itself uses external bundled scripts. Remove or disable the
 injected HUD through the hosting configuration when available; do not add a
-blanket `unsafe-inline` exemption to silence it. This browser warning is separate
+blanket `unsafe-inline` exemption to silence it. The CSP includes the exact SHA-256
+hash reported for the current injected HUD inline script. This permits only that
+script content; a future Netlify script change may require reviewing a new hash
+or disabling the HUD. Redeploy the frontend to apply CSP header changes.
+This browser warning is separate
 from backend `MarketUnavailable` and worker readiness failures.
 
 Use the included `netlify.toml`: `npm run build`, publish `dist`. Set `VITE_API_BASE_URL` to the Railway API HTTPS origin and configure that frontend origin in backend CORS. SPA redirects and security headers are supplied. The content-security policy permits HTTPS API requests; localhost is allowed for local development only. Never configure OpenAI, Binance, PostgreSQL or operator credentials as frontend build variables. No deployment or publishing is performed automatically.
