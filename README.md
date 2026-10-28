@@ -38,6 +38,14 @@ Vitest uses mocked API responses to verify portfolio rendering, separate cost re
 
 ## Netlify
 
+If the console reports an inline-script CSP violation only on the hosted site,
+inspect the script source before changing the policy. Netlify may inject a HUD
+at `/.netlify/scripts/hud` that creates inline scripts inside a `srcdoc` iframe.
+The application itself uses external bundled scripts. Remove or disable the
+injected HUD through the hosting configuration when available; do not add a
+blanket `unsafe-inline` exemption to silence it. This browser warning is separate
+from backend `MarketUnavailable` and worker readiness failures.
+
 Use the included `netlify.toml`: `npm run build`, publish `dist`. Set `VITE_API_BASE_URL` to the Railway API HTTPS origin and configure that frontend origin in backend CORS. SPA redirects and security headers are supplied. The content-security policy permits HTTPS API requests; localhost is allowed for local development only. Never configure OpenAI, Binance, PostgreSQL or operator credentials as frontend build variables. No deployment or publishing is performed automatically.
 
 Source paths: `src/futures-contracts.ts` and `src/futures.tsx` contain the Futures contract and pages. `src/contracts.ts` preserves the Spot contract. `api.ts` owns private API requests, `App.tsx` selects the research view, `ui.tsx` contains shared components, and `charts.tsx` owns chart lifecycle/cleanup. Chart floats are for display only; all backend financial math uses Decimal. Backend OpenAPI is available at `/openapi.json`.
