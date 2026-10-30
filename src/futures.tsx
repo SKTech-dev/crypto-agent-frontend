@@ -4,6 +4,7 @@ import { Activity, ArrowUpRight, Bitcoin } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./api";
 import { Pagination, usePagination } from "./pagination";
+import { decisionSizing } from "./decision-sizing";
 import type { ProtectionEvent } from "./contracts";
 import { CandleChart, EquityChart, PeriodChart } from "./charts";
 import {
@@ -983,6 +984,53 @@ function FuturesDecisionDetail({
   );
 }
 
+export function DecisionTradeAmount({
+  decision,
+  planned = false,
+}: {
+  decision: FuturesDecision;
+  planned?: boolean;
+}) {
+  const view = decisionSizing(decision);
+  if (!planned && !view.executed)
+    return (
+      <>
+        <strong>0.00 USDT</strong>
+        <small className="muted"> · Not executed</small>
+      </>
+    );
+  const sizing = planned ? view.planned : view.traded;
+  if (!sizing)
+    return (
+      <span className="muted">
+        {planned && !view.hasProposal
+          ? decision.status === "SKIPPED"
+            ? "Not evaluated"
+            : "No trade selected"
+          : "Amount not recorded"}
+      </span>
+    );
+  return (
+    <>
+      <strong>
+        {sizing.notional == null
+          ? "Value not recorded"
+          : `${money(sizing.notional)} USDT`}
+      </strong>
+      <div className="muted">{money(sizing.quantity, 8)} BTC</div>
+      {planned && view.action.startsWith("OPEN_") && sizing.margin != null && (
+        <small>
+          Margin: {money(sizing.margin)} USDT
+          {sizing.leverage != null && ` · ${sizing.leverage}×`}
+        </small>
+      )}
+      {planned && view.preview && (
+        <div className="muted">Estimate · not execution approval</div>
+      )}
+    </>
+  );
+}
+
 export function FuturesHistory() {
   const [runKey, setRunKey] = useState("");
   const runs =
@@ -1076,6 +1124,8 @@ export function FuturesHistory() {
                 <th>Time</th>
                 <th>Action</th>
                 <th>Outcome</th>
+                <th>Planned trade</th>
+                <th>Traded</th>
                 <th>Reason</th>
                 <th />
               </tr>
@@ -1090,6 +1140,12 @@ export function FuturesHistory() {
                     <ActionBadge action={d.action} />
                   </td>
                   <td>{d.status}</td>
+                  <td>
+                    <DecisionTradeAmount decision={d} planned />
+                  </td>
+                  <td>
+                    <DecisionTradeAmount decision={d} />
+                  </td>
                   <td className="reason-cell">{d.reason}</td>
                   <td>
                     <button onClick={() => select(d.id)}>
@@ -1101,6 +1157,11 @@ export function FuturesHistory() {
             </tbody>
           </table>
         </div>
+        <p className="panel-note">
+          Trade values are position values in USDT, excluding fees. Margin is
+          the collateral reserved for an entry. A planned amount is not a
+          completed trade.
+        </p>
         {decisions && !decisions.length && (
           <div className="empty">
             {decisionPage.page === 0

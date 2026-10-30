@@ -73,6 +73,18 @@ export interface EligibilityCheck {
   condition: string;
   observed: Record<string, unknown>;
 }
+export interface FuturesRiskSizing {
+  outcome?: string;
+  quantity?: string;
+  proposed_quantity?: string;
+  fill_price?: string;
+  leverage?: number;
+  initial_margin?: string;
+  reasons?: string[];
+  rules?: string[];
+  liquidation_price?: string | null;
+  previews?: Record<string, FuturesRiskSizing>;
+}
 export interface FuturesDecision {
   id: string;
   timestamp: number;
@@ -84,6 +96,7 @@ export interface FuturesDecision {
   prompt_version: string;
   reason: string;
   evidence: Record<string, unknown> & {
+    ai_snapshot?: { risk_previews?: Record<string, FuturesRiskSizing> };
     eligibility?: {
       action: string;
       combination: string;
@@ -97,16 +110,7 @@ export interface FuturesDecision {
     };
   };
   proposal: Record<string, unknown> & { decision_trace?: DecisionTrace };
-  risk: {
-    outcome?: string;
-    quantity?: string;
-    proposed_quantity?: string;
-    leverage?: number;
-    reasons?: string[];
-    rules?: string[];
-    liquidation_price?: string | null;
-    initial_margin?: string;
-  };
+  risk: FuturesRiskSizing;
 }
 export interface FuturesOverview {
   active_run?: RunReport;

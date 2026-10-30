@@ -17,7 +17,7 @@ import {
   FuturesMarketPage,
   FuturesSettingsPage,
 } from "./futures";
-import type { DecisionTrace } from "./futures-contracts";
+import type { DecisionTrace, FuturesDecision } from "./futures-contracts";
 
 vi.mock("./charts", () => ({
   EquityChart: ({ futures }: { futures?: boolean }) => (
@@ -902,4 +902,81 @@ it("shows the active hosted run and distinguishes an archived RUNNING row from a
   expect(screen.getByText(/old-running/)).toHaveTextContent(
     "stored bot state RUNNING",
   );
+});
+
+it("shows planned and traded values separately in the Decision journal, including a vetoed proposal", async () => {
+  const decision: FuturesDecision = {
+    id: "sized-entry",
+    timestamp: Date.now(),
+    ready_at: null,
+    candle_time: null,
+    action: "OPEN_SHORT",
+    status: "EXECUTED",
+    strategy: "btc_ai_first_v2",
+    prompt_version: "futures_evidence_v3",
+    reason: "Executed sized entry",
+    evidence: {},
+    proposal: {},
+    risk: {
+      outcome: "APPROVED",
+      quantity: ".002",
+      proposed_quantity: ".002",
+      fill_price: "77596.20",
+      initial_margin: "77.5962",
+      leverage: 2,
+    },
+  };
+  const vetoed: FuturesDecision = {
+    ...decision,
+    id: "sized-veto",
+    action: "HOLD",
+    status: "COMPLETED",
+    reason: "Vetoed sized entry",
+    proposal: { decision_trace: gatedTrace },
+    risk: { outcome: "NOT_APPLICABLE", quantity: "0" },
+    evidence: {
+      ai_snapshot: {
+        risk_previews: {
+          OPEN_SHORT: {
+            quantity: ".003",
+            proposed_quantity: ".003",
+            fill_price: "80000",
+            initial_margin: "120",
+            leverage: 2,
+          },
+        },
+      },
+    },
+  };
+  const missing: FuturesDecision = {
+    ...decision,
+    id: "unsized",
+    reason: "Historical unsized entry",
+    risk: {},
+  };
+  fetchData({
+    decisions: [decision, vetoed, missing],
+    positions: [],
+    funding: [],
+  });
+  mount(<FuturesHistory />);
+  await screen.findByText("Executed sized entry");
+  expect(
+    screen.getByRole("columnheader", { name: "Planned trade" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("columnheader", { name: "Traded" }),
+  ).toBeInTheDocument();
+  const row = screen.getByText("Executed sized entry").closest("tr")!;
+  expect(within(row).getAllByText("155.19 USDT")).toHaveLength(2);
+  expect(within(row).getAllByText("0.00200000 BTC")).toHaveLength(2);
+  expect(within(row).getByText(/Margin:/)).toHaveTextContent("77.60 USDT");
+  const blocked = screen.getByText("Vetoed sized entry").closest("tr")!;
+  expect(within(blocked).getByText("240.00 USDT")).toBeInTheDocument();
+  expect(within(blocked).getByText("0.00 USDT")).toBeInTheDocument();
+  expect(blocked).toHaveTextContent("Estimate");
+  expect(blocked).toHaveTextContent("not execution approval");
+  expect(blocked).toHaveTextContent("Not executed");
+  const old = screen.getByText("Historical unsized entry").closest("tr")!;
+  expect(within(old).getAllByText("Amount not recorded")).toHaveLength(2);
 });
