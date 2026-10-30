@@ -18,6 +18,8 @@ import {
   stamp,
 } from "./ui";
 import type {
+  DecisionTrace,
+  RunReport,
   FuturesBot,
   FuturesDecision,
   FuturesDetail,
@@ -139,10 +141,50 @@ export function AgentEvidence({
 }) {
   return (
     <>
+      {output._validation?.status === "INVALID" && (
+        <div className="notice error" role="alert">
+          AI evidence validation failed. Routine execution blocked.
+          <ul>
+            {output._validation.issues?.map((issue, i) => (
+              <li key={i}>
+                {issue.code}: {issue.location}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {!output._validation && (
+        <p>
+          Historical model narrative: numerical evidence was not retrospectively
+          verified.
+        </p>
+      )}
+      {output.evidence_references?.map((ref, i) => {
+        const verified =
+          output._validation?.snapshot_id === output.snapshot_id &&
+          output._validation?.verified_reference_indices?.includes(i);
+        return (
+          <div className="agent" key={`${ref.field_path}-${i}`}>
+            <Badge>
+              {verified ? "Verified reference" : "Unverified reference"}
+            </Badge>
+            <p>
+              {ref.field_path}: {ref.observed_value} · {ref.timeframe} ·{" "}
+              {stamp(ref.candle_timestamp)}
+            </p>
+            {ref.comparison !== "OBSERVED" && (
+              <p>
+                {ref.comparison} {ref.comparison_field_path}:{" "}
+                {ref.comparison_value}
+              </p>
+            )}
+          </div>
+        );
+      })}
       {(
         [
-          ["evidence", "Observed evidence"],
-          ["contradictions", "Contradicting evidence"],
+          ["evidence", "Model narrative (unverified)"],
+          ["contradictions", "Model counterarguments (unverified)"],
           ["general_knowledge", "General trading knowledge"],
           ["hypotheses", "Hypotheses"],
           ["missing_data", "Missing information"],
@@ -171,9 +213,98 @@ export function AgentEvidence({
         </p>
       )}
       {output.critical_veto && (
-        <p role="alert">Critical Risk AI veto ? entry blocked</p>
+        <div role="alert">
+          <p>Critical Risk AI veto · entry blocked</p>
+          <p>
+            {output.veto_objection?.reason ||
+              "Veto objection missing or unverified; conservative block retained."}
+          </p>
+          {output.veto_objection && (
+            <p>
+              Resolution required: {output.veto_objection.resolution_condition}
+            </p>
+          )}
+        </div>
+      )}
+      {output.exit_assessment && (
+        <div className="agent">
+          <strong>
+            AI exit assessment · {output.exit_assessment.category}
+          </strong>
+          <p>
+            Position {output.exit_assessment.position_id} ·{" "}
+            {output.exit_assessment.side} · {output.exit_assessment.quantity}{" "}
+            BTC
+          </p>
+          <p>
+            Entry {output.exit_assessment.entry_price} · decision mark{" "}
+            {output.exit_assessment.mark_price}
+          </p>
+          <p>
+            Estimated net P&amp;L:{" "}
+            {money(output.exit_assessment.unrealized_net_pnl, 6)} USDT.
+            Estimated closing cost:{" "}
+            {money(
+              output.exit_assessment.estimated_closing_transaction_cost,
+              6,
+            )}{" "}
+            USDT.
+          </p>
+          <p>
+            Entry thesis reference:{" "}
+            {output.exit_assessment.entry_thesis_reference}. Still valid:{" "}
+            {output.exit_assessment.entry_thesis_still_valid}.
+          </p>
+          <p>Why close now: {output.exit_assessment.close_instead_of_hold}</p>
+          <p>Counterargument: {output.exit_assessment.counterargument}</p>
+          <p>Hold alternative: {output.exit_assessment.hold_alternative}</p>
+        </div>
       )}
     </>
+  );
+}
+
+export function DecisionTraceView({ trace }: { trace?: DecisionTrace }) {
+  if (!trace)
+    return (
+      <p>
+        Historical decision: separate proposal and gate stages were not
+        recorded.
+      </p>
+    );
+  return (
+    <div className="panel-body" aria-label="Decision stages">
+      <p>
+        Strategy proposal: <strong>{trace.strategy_proposal.action}</strong>
+      </p>
+      <p>
+        Risk recommendation: <strong>{trace.risk_assessment.action}</strong>.
+        Critical veto:{" "}
+        <strong>{trace.risk_assessment.critical_veto ? "YES" : "NO"}</strong>
+      </p>
+      <p>
+        Coordinator original proposal:{" "}
+        <strong>{trace.coordinator_proposal.action}</strong>. Original
+        subjective confidence:{" "}
+        {trace.coordinator_proposal.confidence ?? "Unavailable"} (uncalibrated).
+      </p>
+      <p>
+        AI evidence / veto gate: <strong>{trace.ai_gate.outcome}</strong>.{" "}
+        {trace.ai_gate.reason}
+      </p>
+      <p>
+        Deterministic execution safety:{" "}
+        <strong>{trace.execution_safety.outcome || "NOT_EVALUATED"}</strong>.{" "}
+        {trace.execution_safety.reasons?.join("; ")}
+      </p>
+      <p>
+        Final permitted action: <strong>{trace.final_permitted_action}</strong>
+      </p>
+      <p className="panel-note">
+        Agent agreement refers to the original Coordinator proposal. Its
+        confidence is not confidence in a later gated action.
+      </p>
+    </div>
   );
 }
 
@@ -182,6 +313,7 @@ export function FuturesDashboard() {
   const readiness = useFutures<{ status: string; reasons: string[] }>(
     "readiness",
   );
+  const runs = useFutures<RunReport[]>("runs");
   const { data: p, error: performanceError } =
     useFutures<FuturesPerformance>("performance");
   if (error) return <Failure error={error} />;
@@ -218,6 +350,50 @@ export function FuturesDashboard() {
         </div>
       </div>
       <Protection bot={o.bot} />
+      <Panel title="Active research run">
+        <div className="panel-body">
+          <p>
+            Run ID: <strong>{o.active_run?.run_key || o.run_key}</strong> ·
+            starting capital {money(o.portfolio.initial)} USDT
+          </p>
+          <p>
+            Model: {o.active_run?.model || "Not reported"} · strategy:{" "}
+            {o.active_run?.strategy_version || "Not reported"}
+          </p>
+          <p>
+            Worker heartbeat: {stamp(o.bot.heartbeat)} ·{" "}
+            {o.active_run
+              ? o.active_run.heartbeat_fresh
+                ? "Fresh"
+                : "Stale or unavailable"
+              : "Freshness not reported"}
+          </p>
+          <p>
+            Bot: {o.bot.status} · protection:{" "}
+            {o.bot.protection.status || "Unavailable"} · risk:{" "}
+            {o.risk_halt ? "HALTED" : "No portfolio halt"}
+          </p>
+          <p>
+            Estimated AI cost: ${money(o.ai_cost, 6)} · unresolved reservations:
+            ${money(o.ai_reserved, 6)}
+          </p>
+          {runs.data?.some((r) => !r.current) && (
+            <details>
+              <summary>Archived research runs</summary>
+              {runs.data
+                .filter((r) => !r.current)
+                .map((r) => (
+                  <p key={r.run_key}>
+                    {r.run_key} · ARCHIVED · initial {money(r.initial_capital)}{" "}
+                    USDT · last heartbeat {stamp(r.heartbeat)} · stored bot
+                    state {r.status}
+                  </p>
+                ))}
+            </details>
+          )}
+          {runs.error && <Failure error={runs.error} />}
+        </div>
+      </Panel>
       {o.risk_halt && (
         <div className="notice error" role="alert">
           AI portfolio risk halt: new exposure is disabled. Protective
@@ -441,6 +617,9 @@ export function FuturesDashboard() {
                 </div>
                 <DecisionTime timestamp={o.recent_decision.timestamp} />
                 <p>{o.recent_decision.reason}</p>
+                <DecisionTraceView
+                  trace={o.recent_decision.proposal?.decision_trace}
+                />
               </>
             ) : (
               <p>No decisions yet.</p>
@@ -641,6 +820,7 @@ function FuturesDecisionDetail({
               </p>
             )}
             <p>{d.decision.reason}</p>
+            <DecisionTraceView trace={d.decision.proposal.decision_trace} />
             <p>
               Strategy {d.decision.strategy} · prompt{" "}
               {d.decision.prompt_version}
@@ -702,6 +882,16 @@ function FuturesDecisionDetail({
               </p>
             )}
             <h3>Agent analysis</h3>
+            {d.decision.evidence.exit_context != null && (
+              <details>
+                <summary>
+                  Decision-time position and original entry thesis
+                </summary>
+                <pre>
+                  {JSON.stringify(d.decision.evidence.exit_context, null, 2)}
+                </pre>
+              </details>
+            )}
             {!d.agents.length && (
               <p>No agent analysis was recorded for this entry.</p>
             )}
@@ -766,6 +956,21 @@ function FuturesDecisionDetail({
               <pre>{JSON.stringify(d.protection_events, null, 2)}</pre>
             ) : (
               <p>No protective attempts are linked to this entry.</p>
+            )}
+            <h3>Append-only research evaluations</h3>
+            <p>
+              Observed outcomes, estimated costs and hypothetical alternatives
+              are labelled separately. Original AI analysis is preserved.
+            </p>
+            {d.research_evaluations?.length ? (
+              d.research_evaluations.map((e) => (
+                <details key={e.id}>
+                  <summary>Evaluation recorded {stamp(e.timestamp)}</summary>
+                  <pre>{JSON.stringify(e.evidence, null, 2)}</pre>
+                </details>
+              ))
+            ) : (
+              <p>No outcome evaluation recorded for this decision.</p>
             )}
             <details>
               <summary>Original market evidence</summary>

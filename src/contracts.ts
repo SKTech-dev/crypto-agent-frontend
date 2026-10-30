@@ -172,6 +172,44 @@ export interface AgentRun {
   duration_ms: number;
   error: string | null;
   output: {
+    snapshot_id?: string;
+    evidence_references?: {
+      field_path: string;
+      timeframe: string;
+      candle_timestamp: number;
+      observed_value: string;
+      comparison: string;
+      comparison_field_path: string | null;
+      comparison_value: string | null;
+    }[];
+    _validation?: {
+      status: string;
+      snapshot_id?: string;
+      verified_reference_indices?: number[];
+      issues?: { code: string; location: string }[];
+      narrative_status?: string;
+    };
+    veto_objection?: {
+      reason: string;
+      reference_indices: number[];
+      unresolved: boolean;
+      resolution_condition: string;
+    } | null;
+    exit_assessment?: {
+      position_id: string;
+      side: string;
+      quantity: string;
+      entry_price: string;
+      mark_price: string;
+      unrealized_net_pnl: string;
+      entry_thesis_reference: string;
+      entry_thesis_still_valid: string;
+      close_instead_of_hold: string;
+      category: string;
+      estimated_closing_transaction_cost: string;
+      counterargument: string;
+      hold_alternative: string;
+    } | null;
     general_knowledge?: string[];
     hypotheses?: string[];
     missing_data?: string[];
