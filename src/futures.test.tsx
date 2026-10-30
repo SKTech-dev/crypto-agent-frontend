@@ -858,49 +858,23 @@ it("keeps original Coordinator confidence separate from the gated final action",
   expect(stages).toHaveTextContent("original Coordinator proposal");
 });
 
-it("shows the active hosted run and distinguishes an archived RUNNING row from a live worker", async () => {
-  const active = {
-    run_key: "hosted-current",
-    current: true,
-    archived: false,
-    status: "RUNNING",
-    operational_status: "RUNNING",
-    heartbeat: Date.now(),
-    heartbeat_age_ms: 1000,
-    heartbeat_fresh: true,
-    initial_capital: "1000",
-    model: "gpt-4o-mini",
-    strategy_version: "btc_ai_first_v2",
-    evidence_version: "futures_evidence_v3",
-    risk_halt: false,
-  };
-  fetchData({
+it("omits the run metadata section from overview while keeping the risk-halt warning", async () => {
+  const fetch = fetchData({
     overview: {
       ...overview,
-      run_key: active.run_key,
-      portfolio: { initial: "1000" },
-      active_run: active,
+      risk_halt: true,
+      active_run: { run_key: "hosted-current", model: "gpt-4o-mini" },
     },
     performance: { snapshots: [], daily: [], monthly: [] },
-    runs: [
-      active,
-      {
-        ...active,
-        run_key: "old-running",
-        current: false,
-        archived: true,
-        operational_status: "ARCHIVED",
-        heartbeat: 1,
-        heartbeat_fresh: false,
-      },
-    ],
+    runs: [{ run_key: "old-running", current: false, status: "RUNNING" }],
   });
   mount(<FuturesDashboard />);
-  await screen.findByText("hosted-current");
-  expect(screen.getByText(/Model: gpt-4o-mini/)).toBeInTheDocument();
-  expect(screen.getByText(/old-running/)).toHaveTextContent("ARCHIVED");
-  expect(screen.getByText(/old-running/)).toHaveTextContent(
-    "stored bot state RUNNING",
+  await screen.findByText(/AI portfolio risk halt: new exposure is disabled/);
+  expect(screen.queryByText("Active research run")).not.toBeInTheDocument();
+  expect(screen.queryByText("Archived research runs")).not.toBeInTheDocument();
+  expect(screen.queryByText("hosted-current")).not.toBeInTheDocument();
+  expect(fetch.mock.calls.some(([url]) => url.endsWith("/api/runs"))).toBe(
+    false,
   );
 });
 
