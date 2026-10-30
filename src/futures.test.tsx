@@ -11,11 +11,13 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { App } from "./App";
 import {
   AgentEvidence,
+  DecisionTraceView,
   FuturesDashboard,
   FuturesHistory,
   FuturesMarketPage,
   FuturesSettingsPage,
 } from "./futures";
+import type { DecisionTrace, FuturesDecision } from "./futures-contracts";
 
 vi.mock("./charts", () => ({
   EquityChart: ({ futures }: { futures?: boolean }) => (
@@ -236,9 +238,13 @@ function pagedHistory(count = 20, failSecondPage = false) {
     const path = new URL(url).pathname.split("/").pop();
     if (path === "runs") return { ok: true, json: async () => [] };
     if (path === "settings") return { ok: true, json: async () => settings };
-      if (path === "runs") return { ok: true, json: async () => [
-        { run_key: "test-futures", current: true, status: "RUNNING" },
-      ] };
+    if (path === "runs")
+      return {
+        ok: true,
+        json: async () => [
+          { run_key: "test-futures", current: true, status: "RUNNING" },
+        ],
+      };
     const params = new URL(url).searchParams;
     const offset = Number(params.get("offset") || 0);
     if (failSecondPage && path === "decisions" && offset > 0) {
@@ -733,11 +739,11 @@ it("separates observations, model knowledge, hypotheses, uncertainty and a criti
     />,
   );
   for (const label of [
-    "Observed evidence",
+    "Model narrative (unverified)",
     "General trading knowledge",
     "Hypotheses",
     "Missing information",
-    "Contradicting evidence",
+    "Model counterarguments (unverified)",
   ])
     expect(screen.getByText(label)).toBeInTheDocument();
   expect(screen.getByRole("alert")).toHaveTextContent("Critical Risk AI veto");
@@ -757,4 +763,220 @@ it("removes comparator performance from the active overview", async () => {
   expect(
     screen.queryByText("Deterministic comparator"),
   ).not.toBeInTheDocument();
+});
+
+it("labels structured references and never promotes legacy or invalid prose to verified observations", () => {
+  mount(
+    <AgentEvidence
+      output={{
+        snapshot_id: "sealed",
+        evidence: ["RSI was incorrectly quoted as 38.16"],
+        evidence_references: [
+          {
+            field_path: "indicators.rsi",
+            timeframe: "15m",
+            candle_timestamp: Date.now(),
+            observed_value: "45.518188",
+            comparison: "OBSERVED",
+            comparison_field_path: null,
+            comparison_value: null,
+          },
+        ],
+        _validation: {
+          status: "INVALID",
+          snapshot_id: "sealed",
+          verified_reference_indices: [],
+          issues: [
+            {
+              code: "NUMERIC_VALUE_MISMATCH",
+              location: "evidence_references[0]",
+            },
+          ],
+        },
+      }}
+    />,
+  );
+  expect(screen.getByRole("alert")).toHaveTextContent(
+    "AI evidence validation failed",
+  );
+  expect(screen.getByText("Unverified reference")).toBeInTheDocument();
+  expect(screen.queryByText("Verified reference")).not.toBeInTheDocument();
+  expect(screen.getByText("Model narrative (unverified)")).toBeInTheDocument();
+});
+
+it("displays verified references separately from qualitative model reasoning", () => {
+  mount(
+    <AgentEvidence
+      output={{
+        snapshot_id: "sealed",
+        reason: "Bearish hypothesis",
+        evidence_references: [
+          {
+            field_path: "indicators.ema_fast",
+            timeframe: "15m",
+            candle_timestamp: Date.now(),
+            observed_value: "77992",
+            comparison: "LT",
+            comparison_field_path: "indicators.ema_slow",
+            comparison_value: "78119",
+          },
+        ],
+        _validation: {
+          status: "VERIFIED_REFERENCES",
+          snapshot_id: "sealed",
+          verified_reference_indices: [0],
+          issues: [],
+        },
+      }}
+    />,
+  );
+  expect(screen.getByText("Verified reference")).toBeInTheDocument();
+  expect(screen.getByText(/indicators.ema_fast/)).toHaveTextContent("77992");
+  expect(screen.getByText(/indicators.ema_slow/)).toHaveTextContent("78119");
+});
+
+const gatedTrace: DecisionTrace = {
+  version: "futures_evidence_v3",
+  strategy_proposal: { action: "OPEN_SHORT" },
+  risk_assessment: { action: "OPEN_SHORT", critical_veto: true },
+  coordinator_proposal: { action: "OPEN_SHORT", confidence: 0.75 },
+  ai_gate: { outcome: "BLOCKED", reason: "Unresolved reversal objection" },
+  execution_safety: { outcome: "NOT_APPLICABLE" },
+  final_permitted_action: "HOLD",
+};
+
+it("keeps original Coordinator confidence separate from the gated final action", () => {
+  mount(<DecisionTraceView trace={gatedTrace} />);
+  const stages = screen.getByLabelText("Decision stages");
+  expect(stages).toHaveTextContent("Strategy proposal: OPEN_SHORT");
+  expect(stages).toHaveTextContent(
+    "Risk recommendation: OPEN_SHORT. Critical veto: YES",
+  );
+  expect(stages).toHaveTextContent("Coordinator original proposal: OPEN_SHORT");
+  expect(stages).toHaveTextContent("Original subjective confidence: 0.75");
+  expect(stages).toHaveTextContent("Final permitted action: HOLD");
+  expect(stages).toHaveTextContent("original Coordinator proposal");
+});
+
+it("shows the active hosted run and distinguishes an archived RUNNING row from a live worker", async () => {
+  const active = {
+    run_key: "hosted-current",
+    current: true,
+    archived: false,
+    status: "RUNNING",
+    operational_status: "RUNNING",
+    heartbeat: Date.now(),
+    heartbeat_age_ms: 1000,
+    heartbeat_fresh: true,
+    initial_capital: "1000",
+    model: "gpt-4o-mini",
+    strategy_version: "btc_ai_first_v2",
+    evidence_version: "futures_evidence_v3",
+    risk_halt: false,
+  };
+  fetchData({
+    overview: {
+      ...overview,
+      run_key: active.run_key,
+      portfolio: { initial: "1000" },
+      active_run: active,
+    },
+    performance: { snapshots: [], daily: [], monthly: [] },
+    runs: [
+      active,
+      {
+        ...active,
+        run_key: "old-running",
+        current: false,
+        archived: true,
+        operational_status: "ARCHIVED",
+        heartbeat: 1,
+        heartbeat_fresh: false,
+      },
+    ],
+  });
+  mount(<FuturesDashboard />);
+  await screen.findByText("hosted-current");
+  expect(screen.getByText(/Model: gpt-4o-mini/)).toBeInTheDocument();
+  expect(screen.getByText(/old-running/)).toHaveTextContent("ARCHIVED");
+  expect(screen.getByText(/old-running/)).toHaveTextContent(
+    "stored bot state RUNNING",
+  );
+});
+
+it("shows planned and traded values separately in the Decision journal, including a vetoed proposal", async () => {
+  const decision: FuturesDecision = {
+    id: "sized-entry",
+    timestamp: Date.now(),
+    ready_at: null,
+    candle_time: null,
+    action: "OPEN_SHORT",
+    status: "EXECUTED",
+    strategy: "btc_ai_first_v2",
+    prompt_version: "futures_evidence_v3",
+    reason: "Executed sized entry",
+    evidence: {},
+    proposal: {},
+    risk: {
+      outcome: "APPROVED",
+      quantity: ".002",
+      proposed_quantity: ".002",
+      fill_price: "77596.20",
+      initial_margin: "77.5962",
+      leverage: 2,
+    },
+  };
+  const vetoed: FuturesDecision = {
+    ...decision,
+    id: "sized-veto",
+    action: "HOLD",
+    status: "COMPLETED",
+    reason: "Vetoed sized entry",
+    proposal: { decision_trace: gatedTrace },
+    risk: { outcome: "NOT_APPLICABLE", quantity: "0" },
+    evidence: {
+      ai_snapshot: {
+        risk_previews: {
+          OPEN_SHORT: {
+            quantity: ".003",
+            proposed_quantity: ".003",
+            fill_price: "80000",
+            initial_margin: "120",
+            leverage: 2,
+          },
+        },
+      },
+    },
+  };
+  const missing: FuturesDecision = {
+    ...decision,
+    id: "unsized",
+    reason: "Historical unsized entry",
+    risk: {},
+  };
+  fetchData({
+    decisions: [decision, vetoed, missing],
+    positions: [],
+    funding: [],
+  });
+  mount(<FuturesHistory />);
+  await screen.findByText("Executed sized entry");
+  expect(
+    screen.getByRole("columnheader", { name: "Planned trade" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("columnheader", { name: "Traded" }),
+  ).toBeInTheDocument();
+  const row = screen.getByText("Executed sized entry").closest("tr")!;
+  expect(within(row).getAllByText("155.19 USDT")).toHaveLength(2);
+  expect(within(row).getAllByText("0.00200000 BTC")).toHaveLength(2);
+  expect(within(row).getByText(/Margin:/)).toHaveTextContent("77.60 USDT");
+  const blocked = screen.getByText("Vetoed sized entry").closest("tr")!;
+  expect(within(blocked).getByText("240.00 USDT")).toBeInTheDocument();
+  expect(within(blocked).getByText("0.00 USDT")).toBeInTheDocument();
+  expect(blocked).toHaveTextContent("Estimate");
+  expect(blocked).toHaveTextContent("not execution approval");
+  expect(blocked).toHaveTextContent("Not executed");
+  const old = screen.getByText("Historical unsized entry").closest("tr")!;
+  expect(within(old).getAllByText("Amount not recorded")).toHaveLength(2);
 });

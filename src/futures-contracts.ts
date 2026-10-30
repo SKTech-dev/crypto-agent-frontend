@@ -13,6 +13,34 @@ export interface FuturesBot {
   funding_status: string;
   protection: { status?: string; error?: string; detail?: string | null };
 }
+export interface RunReport {
+  run_key: string;
+  current: boolean;
+  archived: boolean;
+  status: string;
+  operational_status: string;
+  heartbeat: number | null;
+  heartbeat_age_ms: number | null;
+  heartbeat_fresh: boolean;
+  initial_capital: string | null;
+  model: string | null;
+  strategy_version: string | null;
+  evidence_version: string | null;
+  risk_halt: boolean | null;
+}
+export interface DecisionTrace {
+  version: string;
+  strategy_proposal: AgentRun["output"];
+  risk_assessment: AgentRun["output"];
+  coordinator_proposal: AgentRun["output"];
+  ai_gate: {
+    outcome: string;
+    reason: string | null;
+    permitted_proposal?: string;
+  };
+  execution_safety: { outcome?: string; reasons?: string[] };
+  final_permitted_action: string;
+}
 export interface FuturesPosition {
   id: string;
   side: "LONG" | "SHORT";
@@ -45,6 +73,18 @@ export interface EligibilityCheck {
   condition: string;
   observed: Record<string, unknown>;
 }
+export interface FuturesRiskSizing {
+  outcome?: string;
+  quantity?: string;
+  proposed_quantity?: string;
+  fill_price?: string;
+  leverage?: number;
+  initial_margin?: string;
+  reasons?: string[];
+  rules?: string[];
+  liquidation_price?: string | null;
+  previews?: Record<string, FuturesRiskSizing>;
+}
 export interface FuturesDecision {
   id: string;
   timestamp: number;
@@ -56,6 +96,7 @@ export interface FuturesDecision {
   prompt_version: string;
   reason: string;
   evidence: Record<string, unknown> & {
+    ai_snapshot?: { risk_previews?: Record<string, FuturesRiskSizing> };
     eligibility?: {
       action: string;
       combination: string;
@@ -68,19 +109,11 @@ export interface FuturesDecision {
       reasons: string[];
     };
   };
-  proposal: Record<string, unknown>;
-  risk: {
-    outcome?: string;
-    quantity?: string;
-    proposed_quantity?: string;
-    leverage?: number;
-    reasons?: string[];
-    rules?: string[];
-    liquidation_price?: string | null;
-    initial_margin?: string;
-  };
+  proposal: Record<string, unknown> & { decision_trace?: DecisionTrace };
+  risk: FuturesRiskSizing;
 }
 export interface FuturesOverview {
+  active_run?: RunReport;
   portfolio: { initial: string };
   risk_halt: boolean;
   run_key: string;
@@ -179,6 +212,7 @@ export interface FuturesDetail {
   })[];
   fill: Record<string, unknown> | null;
   protection_events: ProtectionEvent[];
+  research_evaluations?: ProtectionEvent[];
 }
 export interface FuturesFunding {
   id: string;
