@@ -83,7 +83,6 @@ export interface FuturesDecision {
 export interface FuturesOverview {
   portfolio: { initial: string };
   risk_halt: boolean;
-  deterministic_risk_halt: boolean;
   run_key: string;
   bot: FuturesBot;
   position: FuturesPosition | null;
@@ -104,6 +103,8 @@ export interface FuturesOverview {
   lifetime_pnl: string;
   return_percent: string;
   ai_cost: string;
+  daily_ai_budget?: string;
+  daily_ai_spent_or_reserved?: string;
   ai_reserved: string;
   economic_pnl: string;
   closed_trades: number;
@@ -111,12 +112,10 @@ export interface FuturesOverview {
   liquidations: number;
   max_drawdown: string;
   recent_decision: FuturesDecision | null;
-  deterministic_equity: string;
-  benchmark_assumptions: string;
   liquidation_assumptions: string;
 }
 export interface FuturesPerformance {
-  snapshots: { timestamp: number; equity: string; benchmark_signal: string }[];
+  snapshots: { timestamp: number; equity: string; benchmark_signal?: string }[];
   daily: Period[];
   monthly: Period[];
 }
@@ -157,8 +156,15 @@ export interface FuturesSettings {
   risk: Record<string, unknown>;
   max_leverage: number;
   tier_status: string;
+  ai_failures_today?: number;
   model: string;
   available_models: (ModelPrice & { cached_input_per_million: string })[];
+  ai_capacity?: {
+    scheduled_candles_per_day: number;
+    complete_evaluations_per_day: number;
+    reservation_per_candle_usd: string;
+    reservation_for_96_candles_usd: string;
+  };
   daily_ai_budget: string;
   daily_ai_spent_or_reserved: string;
   protective_policy: string;
