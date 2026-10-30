@@ -20,7 +20,6 @@ import {
 } from "./ui";
 import type {
   DecisionTrace,
-  RunReport,
   FuturesBot,
   FuturesDecision,
   FuturesDetail,
@@ -314,7 +313,6 @@ export function FuturesDashboard() {
   const readiness = useFutures<{ status: string; reasons: string[] }>(
     "readiness",
   );
-  const runs = useFutures<RunReport[]>("runs");
   const { data: p, error: performanceError } =
     useFutures<FuturesPerformance>("performance");
   if (error) return <Failure error={error} />;
@@ -351,50 +349,6 @@ export function FuturesDashboard() {
         </div>
       </div>
       <Protection bot={o.bot} />
-      <Panel title="Active research run">
-        <div className="panel-body">
-          <p>
-            Run ID: <strong>{o.active_run?.run_key || o.run_key}</strong> ·
-            starting capital {money(o.portfolio.initial)} USDT
-          </p>
-          <p>
-            Model: {o.active_run?.model || "Not reported"} · strategy:{" "}
-            {o.active_run?.strategy_version || "Not reported"}
-          </p>
-          <p>
-            Worker heartbeat: {stamp(o.bot.heartbeat)} ·{" "}
-            {o.active_run
-              ? o.active_run.heartbeat_fresh
-                ? "Fresh"
-                : "Stale or unavailable"
-              : "Freshness not reported"}
-          </p>
-          <p>
-            Bot: {o.bot.status} · protection:{" "}
-            {o.bot.protection.status || "Unavailable"} · risk:{" "}
-            {o.risk_halt ? "HALTED" : "No portfolio halt"}
-          </p>
-          <p>
-            Estimated AI cost: ${money(o.ai_cost, 6)} · unresolved reservations:
-            ${money(o.ai_reserved, 6)}
-          </p>
-          {runs.data?.some((r) => !r.current) && (
-            <details>
-              <summary>Archived research runs</summary>
-              {runs.data
-                .filter((r) => !r.current)
-                .map((r) => (
-                  <p key={r.run_key}>
-                    {r.run_key} · ARCHIVED · initial {money(r.initial_capital)}{" "}
-                    USDT · last heartbeat {stamp(r.heartbeat)} · stored bot
-                    state {r.status}
-                  </p>
-                ))}
-            </details>
-          )}
-          {runs.error && <Failure error={runs.error} />}
-        </div>
-      </Panel>
       {o.risk_halt && (
         <div className="notice error" role="alert">
           AI portfolio risk halt: new exposure is disabled. Protective
