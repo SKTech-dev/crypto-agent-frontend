@@ -10,6 +10,7 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, expect, it, vi } from "vitest";
 import { App } from "./App";
 import {
+  AgentEvidence,
   FuturesDashboard,
   FuturesHistory,
   FuturesMarketPage,
@@ -109,6 +110,8 @@ function mount(element: React.ReactNode) {
 function fetchData(values: Record<string, unknown>) {
   const fetch = vi.fn(async (url: string) => {
     const path = url.split("/api/")[1];
+    if (path === "intelligence")
+      return { ok: true, json: async () => values[path] ?? null };
     return {
       ok: true,
       json: async () =>
@@ -189,10 +192,10 @@ it("requires a reason and server eligibility before clearing a halt", async () =
   });
   expect(ai).toBeEnabled();
   expect(
-    screen.getByRole("button", {
+    screen.queryByRole("button", {
       name: "Acknowledge review and clear DETERMINISTIC halt",
     }),
-  ).toBeDisabled();
+  ).not.toBeInTheDocument();
 });
 
 function pagedHistory(count = 20, failSecondPage = false) {
@@ -223,6 +226,7 @@ function pagedHistory(count = 20, failSecondPage = false) {
   }));
   const fetch = vi.fn(async (url: string) => {
     const path = new URL(url).pathname.split("/").pop();
+    if (path === "runs") return { ok: true, json: async () => [] };
     if (path === "settings") return { ok: true, json: async () => settings };
     const params = new URL(url).searchParams;
     const offset = Number(params.get("offset") || 0);
@@ -272,7 +276,7 @@ it("pages each Futures journal independently and resets all pages on portfolio c
   await waitFor(() =>
     expect(funding.getByRole("button", { name: "Previous" })).toBeEnabled(),
   );
-  fireEvent.change(screen.getByLabelText("Research portfolio"), {
+  fireEvent.change(screen.getByLabelText("History portfolio"), {
     target: { value: "DETERMINISTIC" },
   });
   await screen.findByText("No decisions recorded for this portfolio yet.");
@@ -419,6 +423,7 @@ it("saves explicit operator leverage within the cap", async () => {
 
 it("reports quote freshness separately from a fresh mark", async () => {
   fetchData({
+    intelligence: null,
     market: {
       quote: { bid: "80000", ask: "80001" },
       quote_timestamp: Date.now() - 120000,
@@ -494,25 +499,40 @@ it("shows short actions, rejected sizing and funding transfers in the audit jour
   expect(screen.getByText("Late history recovery")).toBeInTheDocument();
 });
 
-it.each(["protection", "analysis"])("explains HTTP 451 from %s", async (stage) => {
-  fetchData({
-    overview: {
-      ...overview,
-      bot: {
-        ...bot,
-        error: stage === "analysis" ? "ANALYSIS:MarketUnavailable: Public Futures time: HTTP_451" : null,
-        protection: stage === "protection"
-          ? { status: "UNAVAILABLE", detail: "Public Futures time: HTTP_451" }
-          : bot.protection,
+it.each(["protection", "analysis"])(
+  "explains HTTP 451 from %s",
+  async (stage) => {
+    fetchData({
+      overview: {
+        ...overview,
+        bot: {
+          ...bot,
+          error:
+            stage === "analysis"
+              ? "ANALYSIS:MarketUnavailable: Public Futures time: HTTP_451"
+              : null,
+          protection:
+            stage === "protection"
+              ? {
+                  status: "UNAVAILABLE",
+                  detail: "Public Futures time: HTTP_451",
+                }
+              : bot.protection,
+        },
       },
-    },
-    performance: { snapshots: [], daily: [], monthly: [] },
-  });
-  mount(<FuturesDashboard />);
-  expect(await screen.findByText("Binance Futures data access is restricted (HTTP 451)."))
-    .toBeInTheDocument();
-  expect(screen.getByText(/new exposure remains blocked/)).toBeInTheDocument();
-});
+      performance: { snapshots: [], daily: [], monthly: [] },
+    });
+    mount(<FuturesDashboard />);
+    expect(
+      await screen.findByText(
+        "Binance Futures data access is restricted (HTTP 451).",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/new exposure remains blocked/),
+    ).toBeInTheDocument();
+  },
+);
 
 it("keeps unresolved protective intents visible", async () => {
   fetchData({
@@ -684,4 +704,46 @@ it("shows rejected commands and releases pending controls", async () => {
     await screen.findByText("Invalid state transition"),
   ).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "START" })).toBeEnabled();
+});
+
+it("separates observations, model knowledge, hypotheses, uncertainty and a critical veto", () => {
+  mount(
+    <AgentEvidence
+      output={{
+        evidence: ["quote.mark supplied"],
+        contradictions: ["hourly trend differs"],
+        general_knowledge: ["Breakouts can fail"],
+        hypotheses: ["Possible reversal"],
+        missing_data: ["No verified news"],
+        uncertainty: "Direction uncertain",
+        invalidation: "Configured stop",
+        critical_veto: true,
+      }}
+    />,
+  );
+  for (const label of [
+    "Observed evidence",
+    "General trading knowledge",
+    "Hypotheses",
+    "Missing information",
+    "Contradicting evidence",
+  ])
+    expect(screen.getByText(label)).toBeInTheDocument();
+  expect(screen.getByRole("alert")).toHaveTextContent("Critical Risk AI veto");
+  expect(screen.getByText(/Direction uncertain/)).toBeInTheDocument();
+});
+
+it("removes comparator performance from the active overview", async () => {
+  fetchData({
+    overview,
+    performance: { snapshots: [], daily: [], monthly: [] },
+  });
+  mount(<FuturesDashboard />);
+  await screen.findByText("Futures portfolio overview");
+  expect(
+    screen.queryByText("Deterministic comparator equity"),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByText("Deterministic comparator"),
+  ).not.toBeInTheDocument();
 });

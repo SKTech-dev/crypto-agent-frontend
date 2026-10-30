@@ -132,6 +132,51 @@ function Protection({ bot }: { bot: FuturesBot }) {
   );
 }
 
+export function AgentEvidence({
+  output,
+}: {
+  output: import("./contracts").AgentRun["output"];
+}) {
+  return (
+    <>
+      {(
+        [
+          ["evidence", "Observed evidence"],
+          ["contradictions", "Contradicting evidence"],
+          ["general_knowledge", "General trading knowledge"],
+          ["hypotheses", "Hypotheses"],
+          ["missing_data", "Missing information"],
+          ["risks", "Risks"],
+        ] as const
+      ).map(([key, label]) =>
+        output[key]?.length ? (
+          <div key={key}>
+            <strong>{label}</strong>
+            <ul>
+              {output[key]!.map((x, i) => (
+                <li key={i}>{x}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null,
+      )}
+      {output.uncertainty && (
+        <p>
+          <strong>Uncertainty:</strong> {output.uncertainty}
+        </p>
+      )}
+      {output.invalidation && (
+        <p>
+          <strong>Invalidation:</strong> {output.invalidation}
+        </p>
+      )}
+      {output.critical_veto && (
+        <p role="alert">Critical Risk AI veto ? entry blocked</p>
+      )}
+    </>
+  );
+}
+
 export function FuturesDashboard() {
   const { data: o, error } = useFutures<FuturesOverview>("overview");
   const readiness = useFutures<{ status: string; reasons: string[] }>(
@@ -318,17 +363,15 @@ export function FuturesDashboard() {
         aside={
           <div className="legend">
             <span className="lime-dot" />
-            AI portfolio <span className="orange-dot" />
-            Deterministic comparator
+            AI-controlled portfolio
           </div>
         }
       >
         <EquityChart rows={p?.snapshots || []} futures />
         <div className="chart-foot">
-          <span>Same capital, risk and execution assumptions</span>
+          <span>AI paper portfolio, including trading costs</span>
           <span>USDT · valued at observed mark</span>
         </div>
-        <p className="panel-note">{o.benchmark_assumptions}</p>
       </Panel>
       <div className="two-col">
         <Panel title="Daily profit & loss" aside={<Badge>UTC</Badge>}>
@@ -354,6 +397,11 @@ export function FuturesDashboard() {
               ["Funding net", money(o.funding, 6) + " USDT"],
               ["Liquidation costs", money(o.liquidation_fees, 6) + " USDT"],
               ["Estimated AI cost", "$" + money(o.ai_cost, 6)],
+              ["Daily AI budget", "$" + money(o.daily_ai_budget)],
+              [
+                "Daily spent or reserved",
+                "$" + money(o.daily_ai_spent_or_reserved, 6),
+              ],
               ["Unresolved AI reservations", "$" + money(o.ai_reserved, 6)],
               [
                 "Combined economic P&L",
@@ -363,10 +411,6 @@ export function FuturesDashboard() {
               [
                 "Closed / liquidated positions",
                 `${o.closed_trades} / ${o.liquidations}`,
-              ],
-              [
-                "Deterministic comparator equity",
-                money(o.deterministic_equity, 4) + " USDT",
               ],
             ].map(([k, v]) => (
               <div key={k}>
@@ -411,6 +455,9 @@ export function FuturesDashboard() {
 
 export function FuturesMarketPage() {
   const { data: m, error } = useFutures<FuturesMarket | null>("market");
+  const { data: intelligence } = useFutures<FuturesDetail | null>(
+    "intelligence",
+  );
   if (error) return <Failure error={error} />;
   if (m === undefined) return <Loading />;
   const mark = m?.latest_mark || m?.quote;
@@ -503,6 +550,25 @@ export function FuturesMarketPage() {
               </Panel>
             ))}
           </div>
+          <Panel title="Market Intelligence">
+            <p className="panel-note">
+              Latest recorded analysis:{" "}
+              {stamp(intelligence?.decision.candle_time)}. Findings may differ
+              from the latest quote.
+            </p>
+            {intelligence?.agents
+              .filter((a) => ["market", "technical"].includes(a.role))
+              .map((a) => (
+                <div className="agent" key={a.id}>
+                  <Badge>{a.role}</Badge>
+                  <p>{a.output.reason || a.error}</p>
+                  <AgentEvidence output={a.output} />
+                </div>
+              ))}
+            {!intelligence?.agents.length && (
+              <p>Awaiting recorded AI market analysis.</p>
+            )}
+          </Panel>
           <Panel title="Contract constraints">
             <div className="panel-body">
               <dl className="contract-grid">
@@ -592,7 +658,11 @@ function FuturesDecisionDetail({
                 historical entry.
               </p>
             )}
-            <h3>Recorded strategy checks</h3>
+            <h3>
+              {d.decision.strategy === "btc_ai_first_v2"
+                ? "AI trading thesis"
+                : "Historical strategy checks"}
+            </h3>
             {d.decision.evidence.eligibility ? (
               <>
                 <p>
@@ -626,7 +696,10 @@ function FuturesDecisionDetail({
                 ))}
               </>
             ) : (
-              <p>No strategy checks were recorded.</p>
+              <p>
+                Indicators inform the AI thesis. Execution requires independent
+                deterministic safety approval.
+              </p>
             )}
             <h3>Agent analysis</h3>
             {!d.agents.length && (
@@ -643,6 +716,7 @@ function FuturesDecisionDetail({
                 <Badge>{a.role}</Badge>
                 <ActionBadge action={a.output.action || "NO_DECISION"} />
                 <p>{a.output.reason || a.error}</p>
+                <AgentEvidence output={a.output} />
                 <small>
                   {a.effective_model || a.model} · input {a.input_tokens}{" "}
                   (cached {a.cached_tokens}) · output {a.output_tokens} ·
@@ -761,7 +835,7 @@ export function FuturesHistory() {
         )}
         <div className="history-toolbar">
           <label className="form-field">
-            Research portfolio{" "}
+            History portfolio{" "}
             <select
               value={kind}
               onChange={(e) => {
@@ -773,10 +847,18 @@ export function FuturesHistory() {
               }}
             >
               <option value="AI">AI-controlled</option>
-              <option value="DETERMINISTIC">Deterministic comparator</option>
+              <option value="DETERMINISTIC">
+                Archived comparator (read-only)
+              </option>
             </select>
           </label>
         </div>
+        {kind === "DETERMINISTIC" && (
+          <p className="notice">
+            Archived comparator evidence only. No new comparator decisions or
+            trades.
+          </p>
+        )}
         <p>Spot records are preserved separately and excluded from this run.</p>
       </div>
       {decisionQuery.error && <Failure error={decisionQuery.error} />}
@@ -1000,7 +1082,7 @@ export function FuturesSettingsPage() {
         <p>Paper-only · BTCUSDT perpetual · research run {s.run_key}</p>
       </div>
       <Protection bot={s.bot} />
-      {s.halt_recovery?.some((r) => r.halted) && (
+      {s.halt_recovery?.some((r) => r.kind === "AI" && r.halted) && (
         <Panel title="Review portfolio risk halts">
           <div className="panel-body">
             <p>
@@ -1018,7 +1100,7 @@ export function FuturesSettingsPage() {
               />
             </label>
             {s.halt_recovery
-              .filter((r) => r.halted)
+              .filter((r) => r.kind === "AI" && r.halted)
               .map((r) => (
                 <div key={r.kind}>
                   <strong>{r.kind}</strong>
@@ -1049,6 +1131,17 @@ export function FuturesSettingsPage() {
           Portfolio risk halt requires operator review before new exposure.
         </div>
       )}
+      <Panel title="System Health">
+        <div className="panel-body">
+          <p>Worker heartbeat: {stamp(s.bot.heartbeat)}</p>
+          <p>
+            Funding: {s.bot.funding_status}. Protection:{" "}
+            {s.bot.protection.status || "Awaiting observation"}.
+          </p>
+          <p>AI failures today: {s.ai_failures_today ?? "Unavailable"}</p>
+          <p>Provider errors: {s.bot.error || "None reported"}</p>
+        </div>
+      </Panel>
       <Panel title="Autonomous worker" aside={<Badge>{s.bot.status}</Badge>}>
         <div className="panel-body">
           <div
@@ -1137,6 +1230,22 @@ export function FuturesSettingsPage() {
           disabled. Configure a sourced, dated tier book before research
           activation.
         </div>
+      )}
+      {s.ai_capacity && (
+        <Panel title="AI analysis capacity">
+          <p>
+            At most {s.ai_capacity.scheduled_candles_per_day} scheduled candles
+            per day. Current budget funds{" "}
+            {s.ai_capacity.complete_evaluations_per_day} complete five-agent
+            evaluations at the conservative reservation bound.
+          </p>
+          <p>
+            Reserved bound per candle: $
+            {s.ai_capacity.reservation_per_candle_usd}; 96-candle bound: $
+            {s.ai_capacity.reservation_for_96_candles_usd}. Actual metered costs
+            can be lower. Exhaustion safely blocks further analysis.
+          </p>
+        </Panel>
       )}
       <Panel title="Isolated margin and deterministic risk">
         <div className="panel-body">

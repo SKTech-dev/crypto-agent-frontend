@@ -27,8 +27,9 @@ export function EquityChart({
   rows,
   futures = false,
 }: {
-  rows: (Pick<Snapshot, "timestamp" | "equity" | "benchmark_signal"> & {
+  rows: (Pick<Snapshot, "timestamp" | "equity"> & {
     benchmark_hold?: string;
+    benchmark_signal?: string;
   })[];
   futures?: boolean;
 }) {
@@ -66,14 +67,15 @@ export function EquityChart({
           })),
         );
     }
-    chart
-      .addSeries(LineSeries, { color: "#e6ac68", lineWidth: 1, lineStyle: 2 })
-      .setData(
-        distinct.map((r) => ({
-          time: Math.floor(r.timestamp / 1000) as Time,
-          value: Number(r.benchmark_signal),
-        })),
-      );
+    if (!futures)
+      chart
+        .addSeries(LineSeries, { color: "#e6ac68", lineWidth: 1, lineStyle: 2 })
+        .setData(
+          distinct.map((r) => ({
+            time: Math.floor(r.timestamp / 1000) as Time,
+            value: Number(r.benchmark_signal),
+          })),
+        );
     chart.timeScale().fitContent();
     return () => chart.remove();
   }, [rows, futures]);

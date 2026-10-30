@@ -172,6 +172,12 @@ export interface AgentRun {
   duration_ms: number;
   error: string | null;
   output: {
+    general_knowledge?: string[];
+    hypotheses?: string[];
+    missing_data?: string[];
+    uncertainty?: string;
+    invalidation?: string;
+    critical_veto?: boolean;
     reason?: string;
     action?: string;
     outlook?: string;
